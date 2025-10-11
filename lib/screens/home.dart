@@ -1,0 +1,138 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import '../widgets/voice_button.dart';
+import '../services/audio_priming.dart';
+import '../services/firestore_sync.dart';
+import 'tasks_list.dart';
+import 'settings.dart';
+import '../widgets/task_form.dart';
+import '../widgets/date_strip.dart';
+import '../widgets/ad_bar.dart';
+import '../widgets/tasks_for_date.dart';
+
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  DateTime _selectedDate = DateTime.now();
+  String? _userEmail;
+  StreamSubscription<String?>? _userSub;
+
+  void _onDateSelected(DateTime d) {
+    setState(() => _selectedDate = d);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // listen for sign-in changes from the sync service
+    _userSub = FirestoreSyncService.instance.userChanges.listen((email) {
+      setState(() {
+        _userEmail = email;
+      });
+    });
+    // No automatic sign-in or dev auto-run: user must press the login button to sign in.
+  }
+
+  @override
+  void dispose() {
+    _userSub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('AI Reminder'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.list),
+            onPressed: () {
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TasksListScreen()));
+            },
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: Center(
+              child: Text(
+                _userEmail ?? 'Not signed in',
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
+          ),
+          IconButton(
+            icon: Icon(_userEmail == null ? Icons.login : Icons.logout),
+            tooltip: _userEmail == null ? 'Sign in to sync' : 'Sign out',
+            onPressed: () async {
+              if (_userEmail == null) {
+                try {
+                  await FirestoreSyncService.instance.init();
+                  final res = await FirestoreSyncService.instance.signInWithGoogle();
+                  if (res != null) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Signed in for sync')));
+                  }
+                } catch (e) {
+                  final msg = e.toString();
+                  if (msg.contains('configuration-not-found')) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sign-in configuration not found. Check Firebase console and authorized domains.')));
+                  } else if (msg.contains('popup-closed-by-user')) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sign-in cancelled (popup closed).')));
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sign-in failed')));
+                  }
+                }
+              } else {
+                try {
+                  await FirestoreSyncService.instance.signOut();
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Signed out')));
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sign-out failed')));
+                }
+              }
+            },
+          ),
+          // Dev controls moved to Settings (one-tap Run dev sync and hidden dev menu).
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
+            },
+          ),
+          IconButton(
+            tooltip: 'Enable audio',
+            icon: const Icon(Icons.volume_up),
+            onPressed: () {
+              try {
+                AudioPriming.showOverlay();
+              } catch (_) {}
+            },
+          ),
+        ],
+      ),
+      body: Column(children: [
+        const AdBar(),
+        DateStrip(initialDate: DateTime.now(), onDateSelected: _onDateSelected),
+        Expanded(child: TasksForDate(date: _selectedDate)),
+      ]),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          final res = await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TaskForm()));
+          if (res == true) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Task created')));
+          }
+        },
+        child: const Icon(Icons.add),
+      ),
+      persistentFooterButtons: [
+        VoiceButton(),
+      ],
+    );
+  }
+
+  // Removed manual sync choice dialog — sign-in automatically fetches server data.
+}

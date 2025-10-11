@@ -1,0 +1,14 @@
+{
+  "filePath": ".spec-workflow/specs/todo-reminder-app/design.md",
+  "currentVersion": 1,
+  "snapshots": [
+    {
+      "version": 1,
+      "filename": "snapshot-001.json",
+      "timestamp": "2025-10-04T11:37:19.646Z",
+      "trigger": "initial",
+      "approvalId": "approval_1759577839619_r8bbfv9nz",
+      "approvalTitle": "Approve design for todo-reminder-app"
+    }
+  ]
+}

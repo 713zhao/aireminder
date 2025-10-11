@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Todo Reminder App</title>
+    <script>
+      // Audio & speech priming: expose window.primeAudio() and show an overlay
+      // that asks the user to tap to enable audio. We persist the choice in
+      // localStorage so it won't prompt again.
+      (function() {
+        let primed = false;
+
+        const isiOS = /iPhone|iPad|iPod/.test(navigator.userAgent) && /AppleWebKit/.test(navigator.userAgent) && !/CriOS/.test(navigator.userAgent);
+
+        function doPrime() {
+          try {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) {
+              const ctx = new AudioCtx();
+              if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+              // On iOS, play a tiny audible tone (very low gain) to reliably unlock audio.
+              // On other platforms keep it silent.
+              const o = ctx.createOscillator();
+              const g = ctx.createGain();
+              if (isiOS) {
+                g.gain.value = 0.03; // very low volume
+                o.type = 'sine';
+                o.frequency.value = 880;
+              } else {
+                g.gain.value = 0; // silent on non-iOS
+              }
+              o.connect(g);
+              g.connect(ctx.destination);
+              o.start();
+              setTimeout(() => {
+                try { o.stop(); } catch (e) {}
+                try { o.disconnect(); g.disconnect(); } catch (e) {}
+                try { ctx.close(); } catch (e) {}
+              }, isiOS ? 120 : 50);
+            }
+          } catch (e) {}
+
+          try {
+            if (window.speechSynthesis) {
+              // On iOS, zero-width utterances may be ignored. Use a tiny low-volume
+              // audible-safe utterance and cancel it quickly. For other platforms,
+              // a zero-width space is used.
+              const text = isiOS ? '.' : '\u200B';
+              const u = new SpeechSynthesisUtterance(text);
+              try { u.volume = isiOS ? 0.01 : 0; } catch (e) {}
+              window.speechSynthesis.cancel();
+              window.speechSynthesis.speak(u);
+              // cancel quickly to avoid audible output
+              setTimeout(() => { try { window.speechSynthesis.cancel(); } catch (e) {} }, 120);
+            }
+          } catch (e) {}
+        }
+
+        window.primeAudio = function() {
+          if (primed) return;
+          primed = true;
+          doPrime();
+          try { localStorage.setItem('audioPrimed', '1'); } catch (e) {}
+          const ov = document.getElementById('audio-overlay');
+          if (ov) {
+            try { ov.style.display = 'none'; } catch (e) { try { ov.parentNode && ov.parentNode.removeChild(ov); } catch (_) {} }
+          }
+          window.removeEventListener('touchstart', window.primeAudio);
+          window.removeEventListener('click', window.primeAudio);
+        };
+
+        try { if (localStorage.getItem('audioPrimed') === '1') primed = true; } catch (e) {}
+
+        // Listen for a first gesture anywhere as a fallback (non-blocking)
+        window.addEventListener('touchstart', window.primeAudio, {passive: true});
+        window.addEventListener('click', window.primeAudio, {passive: true});
+
+        document.addEventListener('DOMContentLoaded', function() {
+          const already = (function(){ try { return localStorage.getItem('audioPrimed') === '1'; } catch(e){return false;} })();
+          const ov = document.getElementById('audio-overlay');
+          if (!ov) return;
+          // Only show the overlay for iOS Safari (other platforms don't need it)
+          if (!isiOS) {
+            try { ov.style.display = 'none'; } catch (e) {}
+            return;
+          }
+          // Helper to test whether priming worked (best-effort)
+          function testPriming(cb) {
+            let ok = false;
+            try {
+              // Try to create/resume AudioContext
+              const AudioCtx = window.AudioContext || window.webkitAudioContext;
+              if (AudioCtx) {
+                const ctx = new AudioCtx();
+                if (ctx.state === 'suspended') {
+                  ctx.resume().catch(() => {});
+                }
+                if (ctx.state === 'running') ok = true;
+                try { ctx.close(); } catch (e) {}
+              }
+            } catch (e) {}
+
+            try {
+              if (window.speechSynthesis) {
+                const t = isiOS ? '.' : '\u200B';
+                const u = new SpeechSynthesisUtterance(t);
+                try { u.volume = isiOS ? 0.01 : 0; } catch (e) {}
+                window.speechSynthesis.cancel();
+                try { window.speechSynthesis.speak(u); ok = true; } catch (e) { ok = ok || false; }
+                setTimeout(() => { try { window.speechSynthesis.cancel(); } catch (e) {} finally { cb(ok); } }, 140);
+                return;
+              }
+            } catch (e) {}
+            // fallback: callback with current ok value
+            setTimeout(() => cb(ok), 50);
+          }
+
+          if (already) {
+            // verify priming; if it fails, show overlay so user can re-prime
+            testPriming(function(success) {
+              if (success) {
+                try { ov.style.display = 'none'; } catch (e) {}
+              } else {
+                try { ov.style.display = 'flex'; } catch (e) {}
+              }
+            });
+          } else {
+            ov.style.display = 'flex';
+          }
+
+          const btn = document.getElementById('audio-enable-btn');
+          if (btn) {
+            // hide overlay immediately on interaction then prime
+            const handler = function(e) {
+              try { e.stopPropagation(); } catch (e) {}
+              try { ov.style.display = 'none'; } catch (e) {}
+              try { window.primeAudio(); } catch (e) {}
+            };
+            // ensure both click and touchend call the handler on iOS
+            btn.addEventListener('click', handler, false);
+            btn.addEventListener('touchend', handler, false);
+          }
+        });
+        // Expose helpers to allow the Flutter app to reset/show the overlay
+        window.resetAudioPriming = function() {
+          try { localStorage.removeItem('audioPrimed'); } catch (e) {}
+          try { primed = false; } catch (e) {}
+          try { const ov = document.getElementById('audio-overlay'); if (ov) ov.style.display = 'flex'; } catch (e) {}
+        };
+        window.showAudioOverlay = function() {
+          try { const ov = document.getElementById('audio-overlay'); if (ov) ov.style.display = 'flex'; } catch (e) {}
+        };
+      })();
+    </script>
+    <style>
+      /* minimal overlay styling */
+      #audio-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:9999; align-items:center; justify-content:center; }
+      #audio-overlay .card { background:#fff; padding:20px 24px; border-radius:12px; text-align:center; max-width:320px; margin:0 16px; }
+      #audio-overlay button { padding:10px 16px; font-size:16px; border-radius:8px; border:none; background:#1976d2; color:white; }
+    </style>
+  </head>
+  <body>
+    <!-- Audio enable overlay (hidden when audioPrimed flag is set) -->
+    <div id="audio-overlay">
+      <div class="card">
+        <h3 style="margin:0 0 8px 0; font-family:inherit;">Enable audio</h3>
+        <p style="margin:0 0 12px 0; color:#444;">Tap to enable sound and voice reminders for this site.</p>
+  <button id="audio-enable-btn" onclick="(function(){var ov=document.getElementById('audio-overlay'); if(ov){ try{ ov.style.display='none'; }catch(e){} try{ ov.parentNode && ov.parentNode.removeChild(ov);}catch(e){} } try{ primeAudio(); }catch(e){} })()" ontouchstart="(function(){var ov=document.getElementById('audio-overlay'); if(ov){ try{ ov.style.display='none'; }catch(e){} try{ ov.parentNode && ov.parentNode.removeChild(ov);}catch(e){} } try{ primeAudio(); }catch(e){} })()">Tap to enable audio</button>
+      </div>
+    </div>
+
+    <script src="main.dart.js" type="application/javascript"></script>
+  </body>
+</html>

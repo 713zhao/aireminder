@@ -1,0 +1,14 @@
+{
+  "filePath": ".spec-workflow/specs/todo-reminder-app/tasks.md",
+  "currentVersion": 1,
+  "snapshots": [
+    {
+      "version": 1,
+      "filename": "snapshot-001.json",
+      "timestamp": "2025-10-04T11:38:57.888Z",
+      "trigger": "initial",
+      "approvalId": "approval_1759577937855_687p78aue",
+      "approvalTitle": "Approve tasks for todo-reminder-app"
+    }
+  ]
+}

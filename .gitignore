@@ -1,0 +1,30 @@
+# Dart/Flutter
+.dart_tool/
+.packages
+.buildlog/
+.pub-cache/
+.pub/
+.flutter-plugins
+.flutter-plugins-dependencies
+.melos_tool/
+build/
+
+# Platforms
+ios/Pods/
+macos/Pods/
+android/.gradle/
+android/app/build/
+linux/build/
+windows/build/
+
+# IDEs
+.idea/
+.vscode/
+
+# Others
+*.iml
+*.log
+
+# Env / secrets (if you have them)
+*.env
+*.env.*
