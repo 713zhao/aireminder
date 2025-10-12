@@ -76,7 +76,7 @@ class _TasksListScreenState extends State<TasksListScreen> {
       ),
     );
     if (confirm != true) return;
-    await notificationService.cancel(int.tryParse(t.id) ?? 0);
+    await notificationService.cancelByTaskId(t.id);
     await _repo.delete(t.id);
     await _load();
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Task deleted')));
@@ -89,7 +89,14 @@ class _TasksListScreenState extends State<TasksListScreen> {
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
           final res = await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TaskForm()));
-          if (res == true) await _load();
+          if (res == true) {
+            await _load();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Task created successfully')),
+              );
+            }
+          }
         },
         child: const Icon(Icons.add),
       ),
@@ -111,7 +118,7 @@ class _TasksListScreenState extends State<TasksListScreen> {
                         Row(children: [
                           Text(TimeOfDay.fromDateTime(occ).format(context), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                           const SizedBox(width: 8),
-                          Text(_remainingText(t, occ), style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                          Flexible(child: Text(_remainingText(t, occ), style: const TextStyle(fontSize: 12, color: Colors.grey))),
                         ]),
                       ],
                     )
@@ -121,7 +128,14 @@ class _TasksListScreenState extends State<TasksListScreen> {
                   icon: const Icon(Icons.edit),
                   onPressed: () async {
                     final res = await Navigator.of(context).push(MaterialPageRoute(builder: (_) => TaskForm(taskId: t.id)));
-                    if (res == true) await _load();
+                    if (res == true) {
+                      await _load();
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Task updated successfully')),
+                        );
+                      }
+                    }
                   },
                 ),
                 IconButton(

@@ -49,9 +49,9 @@ class _VoicePreviewState extends State<VoicePreview> {
               final task = await _repo.create(title: res.title, dueAt: res.dueAt, recurrence: res.recurrence);
               // Schedule notification if due date exists
                 if (task.dueAt != null) {
-                final id = int.tryParse(task.id) ?? DateTime.now().millisecondsSinceEpoch.remainder(100000);
-                final payload = '{"id": $id}';
-                await notificationService.scheduleNotification(id: id, title: task.title, body: task.title, when: task.dueAt!, repeatCap: const Duration(minutes: 5), payload: payload);
+                final notificationId = NotificationService.safeNotificationId(task.id);
+                final payload = '{"taskId": "${task.id}", "notificationId": $notificationId}';
+                await notificationService.scheduleNotification(id: notificationId, title: task.title, body: task.title, when: task.dueAt!, repeatCap: const Duration(minutes: 5), payload: payload);
               }
               Navigator.of(context).pop();
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Task saved')));

@@ -163,7 +163,7 @@ class _TasksForDateState extends State<TasksForDate> {
       ),
     );
     if (confirm != true) return;
-    await notificationService.cancel(int.tryParse(t.id) ?? 0);
+    await notificationService.cancelByTaskId(t.id);
     await _repo.delete(t.id);
     await _load();
     if (!mounted) return;
@@ -180,7 +180,7 @@ class _TasksForDateState extends State<TasksForDate> {
       _tasks.removeWhere((x) => x.id == t.id);
     });
     try {
-      await notificationService.cancel(int.tryParse(t.id) ?? 0);
+      await notificationService.cancelByTaskId(t.id);
     } catch (_) {}
     try {
       _suspendRepoReload = true;
@@ -235,7 +235,7 @@ class _TasksForDateState extends State<TasksForDate> {
                 title: Row(children: [
                   Expanded(child: Text(t.title)),
                   // speaker icon for active readout
-                  if (_activeIds.contains(int.tryParse(t.id) ?? -1)) ...[
+                  if (_activeIds.contains(NotificationService.safeNotificationId(t.id))) ...[
                     const SizedBox(width: 8),
                     Icon(Icons.volume_up, size: 16, color: Theme.of(context).colorScheme.primary),
                   ],
@@ -254,16 +254,40 @@ class _TasksForDateState extends State<TasksForDate> {
                       )
                     : null,
                 onTap: () async {
-                  final id = int.tryParse(t.id) ?? 0;
-                  if (_activeIds.contains(id)) {
+                  final notificationId = NotificationService.safeNotificationId(t.id);
+                  if (_activeIds.contains(notificationId)) {
                     // stop readout immediately
-                    notificationService.stopRepeatingReadout(id);
-                    setState(() => _activeIds.remove(id));
+                    notificationService.stopRepeatingReadout(notificationId);
                     if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Stopped readout')));
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Stopped voice reminder')));
                     return;
                   }
                   Navigator.of(context).push(MaterialPageRoute(builder: (_) => TaskDetailScreen(taskId: t.id)));
+                },
+                onLongPress: () async {
+                  // Manual test for voice reminders
+                  final notificationId = NotificationService.safeNotificationId(t.id);
+                  if (_activeIds.contains(notificationId)) {
+                    // stop readout if already running
+                    notificationService.stopRepeatingReadout(notificationId);
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Stopped voice reminder')));
+                  } else {
+                    // start voice readout for testing
+                    try {
+                      await notificationService.startRepeatingReadout(
+                        id: notificationId,
+                        text: '${t.title}. ${t.notes ?? ''}',
+                        interval: const Duration(seconds: 10),
+                        capDuration: const Duration(minutes: 2),
+                      );
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Started voice reminder (long press again to stop)')));
+                    } catch (e) {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Voice error: $e')));
+                    }
+                  }
                 },
               ),
             ),

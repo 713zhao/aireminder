@@ -16,6 +16,15 @@ class NotificationService {
   NotificationService();
 
   final FlutterLocalNotificationsPlugin _fln = FlutterLocalNotificationsPlugin();
+  
+  /// Convert a task ID string to a safe 32-bit notification ID
+  /// Uses hash code to ensure consistent mapping while staying within Android's limits
+  static int safeNotificationId(String taskId) {
+    // Use hashCode to convert string to int, then ensure it's positive and within 32-bit range
+    final hash = taskId.hashCode;
+    // Ensure positive and within 32-bit signed integer range
+    return hash.abs() % 2147483647; // Max value for 32-bit signed int
+  }
   final Map<int, RepeatController> _activeRepeats = {};
   final TtsService _tts = TtsService();
   final Map<int, Timer> _scheduledTimers = {};
@@ -45,46 +54,73 @@ class NotificationService {
     Duration? repeatCap,
     String? payload,
   }) async {
-    final tz.TZDateTime tzWhen = tz.TZDateTime.from(when, tz.local);
-
-    await _fln.zonedSchedule(
-      id,
-      title,
-      body,
-      tzWhen,
-      NotificationDetails(
-        android: AndroidNotificationDetails(
-          'todo_channel',
-          'Todos',
-          channelDescription: 'Todo reminders',
-          actions: <AndroidNotificationAction>[
-            const AndroidNotificationAction('stop', 'Stop Readout'),
-            const AndroidNotificationAction('snooze_5', 'Snooze 5m'),
-            const AndroidNotificationAction('snooze_10', 'Snooze 10m'),
-            const AndroidNotificationAction('snooze_30', 'Snooze 30m'),
-            const AndroidNotificationAction('snooze_default', 'Snooze'),
-            const AndroidNotificationAction('done', 'Mark Done'),
-          ],
-        ),
-        iOS: DarwinNotificationDetails(),
-      ),
-      payload: payload,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      matchDateTimeComponents: null,
-    );
-
-    // In-app fallback: if app is running, schedule a Timer to start repeating readout at the same time
     final now = DateTime.now();
     final delay = when.difference(now);
+    
+    // Debug timezone information
+    print('Notification Debug:');
+    print('  - Current time: ${now.toString()} (${now.timeZoneName} ${now.timeZoneOffset})');
+    print('  - Scheduled time: ${when.toString()}');
+    print('  - Delay: ${delay.inMinutes} minutes');
+    print('  - Local timezone: ${tz.local.name}');
+    
+    // Check if the scheduled time is in the past
     if (delay.isNegative) {
-      // If time already passed, trigger immediately
-      startRepeatingReadout(id: id, text: body, interval: repeatInterval ?? const Duration(seconds: 20), capDuration: repeatCap);
-    } else {
-      _scheduledTimers[id]?.cancel();
-      _scheduledTimers[id] = Timer(delay, () {
-        startRepeatingReadout(id: id, text: body, interval: repeatInterval ?? const Duration(seconds: 20), capDuration: repeatCap);
-      });
+      print('Notification: Task due time is in the past, showing immediate notification and starting voice');
+      // Show immediate notification for overdue task
+      await showImmediate(id, 'Overdue: $title', body, payload: payload);
+      // Start voice readout immediately
+      await startRepeatingReadout(
+        id: id, 
+        text: 'Overdue reminder: $body', 
+        interval: repeatInterval ?? const Duration(seconds: 20), 
+        capDuration: repeatCap ?? const Duration(minutes: 5)
+      );
+      return;
     }
+
+    // Schedule future notification
+    try {
+      final tz.TZDateTime tzWhen = tz.TZDateTime.from(when, tz.local);
+      
+      await _fln.zonedSchedule(
+        id,
+        title,
+        body,
+        tzWhen,
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            'todo_channel',
+            'Todos',
+            channelDescription: 'Todo reminders',
+            actions: <AndroidNotificationAction>[
+              const AndroidNotificationAction('stop', 'Stop Readout'),
+              const AndroidNotificationAction('snooze_5', 'Snooze 5m'),
+              const AndroidNotificationAction('snooze_10', 'Snooze 10m'),
+              const AndroidNotificationAction('snooze_30', 'Snooze 30m'),
+              const AndroidNotificationAction('snooze_default', 'Snooze'),
+              const AndroidNotificationAction('done', 'Mark Done'),
+            ],
+          ),
+          iOS: DarwinNotificationDetails(),
+        ),
+        payload: payload,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        matchDateTimeComponents: null,
+      );
+      
+      print('Notification: Scheduled for ${when.toString()} (in ${delay.inMinutes} minutes)');
+    } catch (e) {
+      print('Failed to schedule notification: $e');
+      // If scheduling fails, show immediate notification as fallback
+      await showImmediate(id, title, body, payload: payload);
+    }
+
+    // In-app fallback: schedule a Timer to start repeating readout at the same time
+    _scheduledTimers[id]?.cancel();
+    _scheduledTimers[id] = Timer(delay, () {
+      startRepeatingReadout(id: id, text: body, interval: repeatInterval ?? const Duration(seconds: 20), capDuration: repeatCap);
+    });
   }
 
   Future<void> showImmediate(int id, String title, String body, {String? payload}) async {
@@ -115,21 +151,29 @@ class NotificationService {
   void _onNotificationResponse(NotificationResponse response) async {
     try {
       final payload = response.payload;
-      int? id;
+      String? taskId;
+      int? notificationId;
       if (payload != null && payload.isNotEmpty) {
         final Map<String, dynamic> p = jsonDecode(payload);
-        id = p['id'] is int ? p['id'] as int : int.tryParse(p['id']?.toString() ?? '');
+        taskId = p['taskId']?.toString();
+        notificationId = p['notificationId'] is int ? p['notificationId'] as int : int.tryParse(p['notificationId']?.toString() ?? '') ?? 0;
+        
+        // Legacy format support - if new format not found, try old format
+        if (taskId == null && p['id'] != null) {
+          taskId = p['id'].toString();
+          notificationId = safeNotificationId(taskId);
+        }
       }
       final actionId = response.actionId;
-      if (actionId == 'stop' && id != null) {
-        stopRepeatingReadout(id);
-        // also emit to UI
-        _payloadStream.add({'action': 'stop', 'id': id});
-      } else if ((actionId == 'snooze_5' || actionId == 'snooze_10' || actionId == 'snooze_30' || actionId == 'snooze_default') && id != null) {
+      if (actionId == 'stop' && notificationId != null) {
+        stopRepeatingReadout(notificationId);
+        // also emit to UI with task ID for business logic
+        _payloadStream.add({'action': 'stop', 'id': taskId});
+      } else if ((actionId == 'snooze_5' || actionId == 'snooze_10' || actionId == 'snooze_30' || actionId == 'snooze_default') && taskId != null && notificationId != null) {
         try {
           final repo = HiveTaskRepository();
           final tasks = await repo.list();
-          final found = tasks.where((t) => t.id == id.toString()).toList();
+          final found = tasks.where((t) => t.id == taskId).toList();
           if (found.isNotEmpty) {
             final task = found.first;
             int minutes = 10;
@@ -148,24 +192,24 @@ class NotificationService {
             final snoozeAt = DateTime.now().add(snoozeDuration);
             // schedule a new notification with same text
             await scheduleNotification(
-              id: id,
+              id: notificationId,
               title: task.title,
               body: task.notes ?? task.title,
               when: snoozeAt,
               repeatInterval: null,
               repeatCap: null,
-              payload: jsonEncode({'id': id}),
+              payload: jsonEncode({'taskId': taskId, 'notificationId': notificationId}),
             );
-            _payloadStream.add({'action': 'snooze', 'id': id, 'minutes': minutes});
+            _payloadStream.add({'action': 'snooze', 'id': taskId, 'minutes': minutes});
           }
         } catch (_) {}
-      } else if (actionId == 'done' && id != null) {
+      } else if (actionId == 'done' && taskId != null && notificationId != null) {
         // stop readout and delete or mark done in repo
-        stopRepeatingReadout(id);
+        stopRepeatingReadout(notificationId);
         final repo = HiveTaskRepository();
-        await repo.delete(id.toString());
-        await _fln.cancel(id);
-        _payloadStream.add({'action': 'done', 'id': id});
+        await repo.delete(taskId);
+        await _fln.cancel(notificationId);
+        _payloadStream.add({'action': 'done', 'id': taskId});
       } else if (response.notificationResponseType == NotificationResponseType.selectedNotification) {
         // notification tapped - maybe open app or show details (handled by UI)
         if (payload != null && payload.isNotEmpty) {
@@ -248,6 +292,13 @@ class NotificationService {
   Future<void> cancel(int id) async {
     stopRepeatingReadout(id);
     await _fln.cancel(id);
+  }
+  
+  /// Cancel notification using task ID string (converts to safe notification ID)
+  Future<void> cancelByTaskId(String taskId) async {
+    final safeId = safeNotificationId(taskId);
+    stopRepeatingReadout(safeId);
+    await _fln.cancel(safeId);
   }
 }
 

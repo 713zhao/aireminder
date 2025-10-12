@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:todo_reminder_app/services/repeat_controller.dart';
+import 'package:aireminder/services/repeat_controller.dart';
 
 void main() {
   test('repeat controller fires immediately and then respects interval and cap', () async {

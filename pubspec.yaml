@@ -1,7 +1,7 @@
-name: todo_reminder_app
-description: A lightweight todo & reminder Flutter app (scaffold for development).
+name: aireminder
+description: AI-powered reminder and todo app with smart scheduling.
 publish_to: 'none'
-version: 0.1.0
+version: 1.0.0+1
 environment:
   sdk: '>=2.18.0 <4.0.0'
 
@@ -24,10 +24,17 @@ dependencies:
   firebase_auth: ^6.1.0
   cloud_firestore: ^6.0.2
   google_sign_in: ^7.2.0
+  google_mobile_ads: ^5.2.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_launcher_icons: ^0.13.1
 
 flutter:
   uses-material-design: true
+
+flutter_icons:
+  android: true
+  image_path: "play_store_assets/icons/app_icon_1024x1024.png"
+  min_sdk_android: 21 # Android 5.0

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'dart:convert';
 import '../data/hive_task_repository.dart';
 import '../models/task.dart';
 import '../services/notification_service.dart';
@@ -58,11 +59,12 @@ class _TaskFormState extends State<TaskForm> {
   }
 
   Future<void> _pickDateTime() async {
+    final now = DateTime.now();
     final date = await showDatePicker(
       context: context,
-      initialDate: _dueAt ?? DateTime.now(),
-      firstDate: DateTime.now().subtract(const Duration(days: 365)),
-      lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
+      initialDate: _dueAt ?? now,
+      firstDate: now.subtract(const Duration(days: 1)), // Allow yesterday for flexibility
+      lastDate: now.add(const Duration(days: 365 * 5)),
     );
     if (date == null) return;
     final time = await showTimePicker(
@@ -70,8 +72,38 @@ class _TaskFormState extends State<TaskForm> {
       initialTime: _dueAt != null ? TimeOfDay.fromDateTime(_dueAt!) : TimeOfDay.now(),
     );
     if (time == null) return;
+    
+    final selectedDateTime = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    
+    // Warn if selected time is in the past
+    if (selectedDateTime.isBefore(now)) {
+      final shouldProceed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Past Due Date'),
+          content: Text(
+            'The selected time (${DateFormat.yMd().add_jm().format(selectedDateTime)}) is in the past. '
+            'This task will be marked as overdue and voice reminders will start immediately.\n\n'
+            'Do you want to continue?'
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Continue'),
+            ),
+          ],
+        ),
+      );
+      
+      if (shouldProceed != true) return;
+    }
+    
     setState(() {
-      _dueAt = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+      _dueAt = selectedDateTime;
       // Auto-select current weekday for weekly recurrence
       if (_recurrence == 'weekly') {
         _weeklyDays = {_dueAt!.weekday};
@@ -113,57 +145,78 @@ class _TaskFormState extends State<TaskForm> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    final repo = HiveTaskRepository();
-    Task? newOrUpdated;
-    if (widget.taskId == null) {
-      newOrUpdated = await repo.create(
-        title: _titleCtrl.text.trim(),
-        notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
-        dueAt: _dueAt,
-        recurrence: _recurrence == 'none' ? null : _recurrence,
-        remindBeforeMinutes: _remindBeforeMinutes,
-        recurrenceEndDate: _recurrenceEndDate,
-        weeklyDays: _weeklyDays.isEmpty ? null : _weeklyDays.toList(),
+    
+    try {
+      final repo = HiveTaskRepository();
+      Task? newOrUpdated;
+      
+      if (widget.taskId == null) {
+        // Creating new task
+        newOrUpdated = await repo.create(
+          title: _titleCtrl.text.trim(),
+          notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+          dueAt: _dueAt,
+          recurrence: _recurrence == 'none' ? null : _recurrence,
+          remindBeforeMinutes: _remindBeforeMinutes,
+          recurrenceEndDate: _recurrenceEndDate,
+          weeklyDays: _weeklyDays.isEmpty ? null : _weeklyDays.toList(),
+        );
+      } else {
+        // Updating existing task
+        final all = await repo.list();
+        final existing = all.firstWhere((t) => t.id == widget.taskId, orElse: () => throw StateError('task not found'));
+        final updated = Task(
+          id: existing.id,
+          title: _titleCtrl.text.trim(),
+          notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+          createdAt: existing.createdAt,
+          dueAt: _dueAt,
+          recurrence: _recurrence == 'none' ? null : _recurrence,
+          isCompleted: existing.isCompleted,
+          completedAt: existing.completedAt,
+          reminderId: existing.reminderId,
+          remindBeforeMinutes: _remindBeforeMinutes,
+          recurrenceEndDate: _recurrenceEndDate,
+          weeklyDays: _weeklyDays.isEmpty ? null : _weeklyDays.toList(),
+        );
+        await repo.save(updated);
+        newOrUpdated = updated;
+      }
+
+      // Schedule notification if task has due date
+      if (newOrUpdated.dueAt != null) {
+        try {
+          final id = NotificationService.safeNotificationId(newOrUpdated.id);
+          final reminderTime = newOrUpdated.dueAt!.subtract(Duration(minutes: newOrUpdated.remindBeforeMinutes));
+          await notificationService.scheduleNotification(
+            id: id,
+            title: newOrUpdated.title,
+            body: newOrUpdated.notes ?? newOrUpdated.title,
+            when: reminderTime,
+            repeatInterval: newOrUpdated.recurrence == 'daily' ? const Duration(days: 1) : null,
+            repeatCap: null,
+            payload: jsonEncode({'taskId': newOrUpdated.id, 'notificationId': id}),
+          );
+        } catch (e) {
+          // Log notification error but don't prevent task save
+          print('Failed to schedule notification: $e');
+        }
+      }
+
+      // Navigate back with success
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+      
+    } catch (e) {
+      // Show error message and stay on form
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to save task: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
       );
-    } else {
-      final all = await repo.list();
-      final existing = all.firstWhere((t) => t.id == widget.taskId, orElse: () => throw StateError('task not found'));
-      final updated = Task(
-        id: existing.id,
-        title: _titleCtrl.text.trim(),
-        notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
-        createdAt: existing.createdAt,
-        dueAt: _dueAt,
-        recurrence: _recurrence == 'none' ? null : _recurrence,
-        isCompleted: existing.isCompleted,
-        completedAt: existing.completedAt,
-        reminderId: existing.reminderId,
-        remindBeforeMinutes: _remindBeforeMinutes,
-        recurrenceEndDate: _recurrenceEndDate,
-        weeklyDays: _weeklyDays.isEmpty ? null : _weeklyDays.toList(),
-      );
-      await repo.save(updated);
-      newOrUpdated = updated;
     }
-
-  if (newOrUpdated.dueAt != null) {
-      final id = int.tryParse(newOrUpdated.id) ?? DateTime.now().millisecondsSinceEpoch;
-      final reminderTime = newOrUpdated.dueAt!.subtract(Duration(minutes: newOrUpdated.remindBeforeMinutes));
-      await notificationService.scheduleNotification(
-        id: id,
-        title: newOrUpdated.title,
-        body: newOrUpdated.notes ?? newOrUpdated.title,
-        when: reminderTime,
-        repeatInterval: newOrUpdated.recurrence == 'daily' ? const Duration(days: 1) : null,
-        repeatCap: null,
-        payload: newOrUpdated.toString(),
-      );
-    }
-
-    // done: scheduling handled for newOrUpdated above
-
-  if (!mounted) return;
-  Navigator.of(context).pop(true);
   }
 
   @override

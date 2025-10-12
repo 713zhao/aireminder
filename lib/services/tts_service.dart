@@ -16,11 +16,21 @@ class TtsService {
     try {
       final settings = Hive.box('settings_box');
       final enabled = settings.get('voiceReminders', defaultValue: true) as bool;
-      if (!enabled) return;
-    } catch (_) {
-      // If settings can't be read, fall back to speaking.
+      if (!enabled) {
+        print('TTS: Voice reminders disabled in settings');
+        return;
+      }
+    } catch (e) {
+      print('TTS: Settings error, proceeding with speech: $e');
     }
-    await _impl.speak(text);
+    
+    try {
+      print('TTS: Speaking: "$text"');
+      await _impl.speak(text);
+    } catch (e) {
+      print('TTS: Error speaking: $e');
+      rethrow;
+    }
   }
 
   Future<void> stop() async {

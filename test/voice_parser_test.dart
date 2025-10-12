@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:todo_reminder_app/services/voice_parser.dart';
+import 'package:aireminder/services/voice_parser.dart';
 
 void main() {
   test('parses tomorrow at 9am', () {

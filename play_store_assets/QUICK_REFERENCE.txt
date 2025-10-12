@@ -1,0 +1,24 @@
+QUICK REFERENCE - Where to put your assets:
+
+✅ APP ICON (1024x1024 PNG):
+   → play_store_assets/icons/app_icon_1024x1024.png
+
+✅ FEATURE GRAPHIC (1024x500 PNG/JPG):
+   → play_store_assets/graphics/feature_graphic_1024x500.png
+
+📸 PHONE SCREENSHOTS (1080x1920, 2-8 images):
+   → play_store_assets/screenshots/phone_01.png
+   → play_store_assets/screenshots/phone_02.png
+   → play_store_assets/screenshots/phone_03.png
+   → etc.
+
+UPLOAD TO GOOGLE PLAY CONSOLE:
+- Store Listing → Main Store Listing → Graphics
+- Drag and drop from the folders above
+
+CURRENT STATUS:
+- [✓] Folders created
+- [ ] Copy your app icon here
+- [ ] Copy your feature graphic here  
+- [ ] Take and add screenshots
+- [ ] Upload to Play Store Console

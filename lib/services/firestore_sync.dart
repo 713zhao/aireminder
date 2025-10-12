@@ -7,10 +7,6 @@ import 'package:cloud_firestore/cloud_firestore.dart' as firestore;
 import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
 import 'package:firebase_core/firebase_core.dart' as firebase_core;
 import 'package:flutter/foundation.dart' show kIsWeb;
-// Note: we intentionally avoid using google_sign_in here to keep web auth
-// simple for initial tests. Use FirebaseAuth signInAnonymously() as a
-// safe developer path. Google sign-in can be added later with platform
-// specific wiring (and the FlutterFire UI or updated package API).
 import '../firebase_options.dart' as fo;
 import '../models/task.dart';
 import '../data/hive_task_repository.dart';
@@ -39,16 +35,20 @@ class FirestoreSyncService {
   bool _suspendLocalPush = false;
 
   Future<void> init() async {
-    // Try to initialize Firebase with generated options first, then default.
+    // Try to initialize Firebase with platform-specific options first, then fallback.
     try {
-      await firebase_core.Firebase.initializeApp(options: fo.firebaseOptions);
+      await firebase_core.Firebase.initializeApp(options: fo.DefaultFirebaseOptions.currentPlatform);
     } catch (e) {
       try {
-        await firebase_core.Firebase.initializeApp();
-      } catch (_) {
-        _statusController.add('no-firebase');
-        _initialized = false;
-        return;
+        await firebase_core.Firebase.initializeApp(options: fo.firebaseOptions);
+      } catch (e2) {
+        try {
+          await firebase_core.Firebase.initializeApp();
+        } catch (_) {
+          _statusController.add('no-firebase');
+          _initialized = false;
+          return;
+        }
       }
     }
 
@@ -144,13 +144,42 @@ class FirestoreSyncService {
         } catch (_) {}
         return {'email': email};
       } else {
-        // Mobile platforms: fall back to anonymous sign-in for now.
-        final userCred = await _auth!.signInAnonymously();
-        final uid = userCred.user?.uid;
-        final label = 'anon:$uid';
-        _userController.add(label);
-        _statusController.add('idle');
-        return {'email': label};
+        // Mobile platforms: Use Google Sign-In with Firebase Auth
+        try {
+          // For now, use Google Auth Provider directly without google_sign_in package
+          // This requires the user to sign in through Firebase's built-in Google provider
+          final provider = fb_auth.GoogleAuthProvider();
+          provider.addScope('email');
+          provider.setCustomParameters({'login_hint': 'user@example.com'});
+          
+          // This will use the system's Google account picker on Android
+          final userCred = await _auth!.signInWithProvider(provider);
+          final email = userCred.user?.email;
+          _userController.add(email);
+          _statusController.add('idle');
+          
+          print('[FirestoreSync] Google sign-in success: $email');
+          return {'email': email};
+        } catch (googleError) {
+          print('[FirestoreSync] Google sign-in failed, trying anonymous: $googleError');
+          
+          // Fallback to anonymous sign-in if Google sign-in fails
+          try {
+            final userCred = await _auth!.signInAnonymously();
+            final uid = userCred.user?.uid;
+            final label = 'anonymous-user';
+            _userController.add(label);
+            _statusController.add('idle');
+            print('[FirestoreSync] Anonymous fallback success: $uid');
+            return {'email': label, 'uid': uid};
+          } catch (anonymousError) {
+            // If both fail, work offline
+            print('[FirestoreSync] All sign-in methods failed, working offline');
+            _userController.add('offline-user@local');
+            _statusController.add('idle');
+            return {'email': 'offline-user@local'};
+          }
+        }
       }
     } on fb_auth.FirebaseAuthException catch (e) {
       _statusController.add('error');
@@ -164,6 +193,13 @@ class FirestoreSyncService {
       }
       if (e.code == 'popup-closed-by-user') {
         throw Exception('popup-closed-by-user');
+      }
+      if (e.code == 'admin-restricted-operation') {
+        // Firebase auth not properly configured - work in offline mode
+        print('[FirestoreSync] Firebase auth not configured, working offline');
+        _userController.add('offline-user@local');
+        _statusController.add('idle');
+        return {'email': 'offline-user@local'};
       }
       // For network-related failures, restore local backup so the app can work offline
       try {

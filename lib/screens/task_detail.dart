@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import '../data/hive_task_repository.dart';
 import '../models/task.dart';
 import '../services/notification_service.dart';
@@ -30,7 +31,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
   Future<void> _markDone() async {
     if (_task == null) return;
-    await notificationService.cancel(int.tryParse(_task!.id) ?? 0);
+    await notificationService.cancelByTaskId(_task!.id);
     await _repo.delete(_task!.id);
     if (!mounted) return;
     Navigator.of(context).pop();
@@ -59,7 +60,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         disabledUntil: DateTime(date.year, date.month, date.day, time.hour, time.minute),
       );
       // cancel current scheduled notification
-      await notificationService.cancel(int.tryParse(_task!.id) ?? 0);
+      await notificationService.cancelByTaskId(_task!.id);
       await _repo.save(_task!);
     } else {
       // enable again
@@ -79,7 +80,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       await _repo.save(_task!);
       // reschedule if dueAt exists
       if (_task!.dueAt != null) {
-        final id = int.tryParse(_task!.id) ?? DateTime.now().millisecondsSinceEpoch;
+        final id = NotificationService.safeNotificationId(_task!.id);
         await notificationService.scheduleNotification(
           id: id,
           title: _task!.title,
@@ -87,7 +88,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           when: _task!.dueAt!,
           repeatInterval: _task!.recurrence == 'daily' ? const Duration(days: 1) : null,
           repeatCap: null,
-          payload: _task!.toString(),
+          payload: jsonEncode({'taskId': _task!.id, 'notificationId': id}),
         );
       }
     }
@@ -104,7 +105,14 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           icon: const Icon(Icons.edit),
           onPressed: () async {
             final res = await Navigator.of(context).push(MaterialPageRoute(builder: (_) => TaskForm(taskId: _task!.id)));
-            if (res == true) await _load();
+            if (res == true) {
+              await _load();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Task updated successfully')),
+                );
+              }
+            }
           },
         ),
       ]),

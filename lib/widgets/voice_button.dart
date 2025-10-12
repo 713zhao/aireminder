@@ -24,8 +24,29 @@ class _VoiceButtonState extends State<VoiceButton> {
       icon: const Icon(Icons.mic),
       label: const Text('Voice Add'),
       onPressed: () async {
-        await _voice.init();
-        Navigator.of(context).push(MaterialPageRoute(builder: (_) => VoicePreview(voiceService: _voice)));
+        try {
+          final initialized = await _voice.init();
+          if (!initialized) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Voice input not available on this device'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+            return;
+          }
+          if (!mounted) return;
+          Navigator.of(context).push(MaterialPageRoute(builder: (_) => VoicePreview(voiceService: _voice)));
+        } catch (e) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Voice error: ${e.toString()}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       },
     );
   }

@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "169294947687",
+    "project_id": "reminder-cd1c5",
+    "storage_bucket": "reminder-cd1c5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:169294947687:android:c7e87949bd14be4276bbc2",
+        "android_client_info": {
+          "package_name": "com.aireminder"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "169294947687-5v7ik585farmlep7rm20nq1k6eoc9h9f.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.aireminder",
+            "certificate_hash": "3f5f44c3c97b2c1383490555809af565a32fe565"
+          }
+        },
+        {
+          "client_id": "169294947687-089ouq52ll8k2jr0j4s1inugtgh9flaj.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBW4KEFpq6fqhkMsFq0hioMy_HzTXI44Pk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "169294947687-089ouq52ll8k2jr0j4s1inugtgh9flaj.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
