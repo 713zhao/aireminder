@@ -140,4 +140,15 @@ class HiveTaskRepository {
       } catch (_) {}
     }
   }
+
+  /// Clear all local task data including backups.
+  /// WARNING: This permanently deletes all tasks from local storage.
+  Future<void> clearAllLocalData() async {
+    try {
+      await _box.clear();
+      await _backup.clear();
+    } catch (e) {
+      throw Exception('Failed to clear local data: $e');
+    }
+  }
 }

@@ -400,4 +400,33 @@ class FirestoreSyncService {
 
   /// Whether a user is currently signed in.
   bool get isSignedIn => _auth?.currentUser != null;
+
+  /// Clear all online data for the current user.
+  /// WARNING: This permanently deletes all tasks from the user's Firestore collection.
+  Future<void> clearAllOnlineData() async {
+    if (!_initialized || _auth?.currentUser == null) {
+      throw Exception('Not signed in or Firebase not initialized');
+    }
+
+    try {
+      final uid = _auth!.currentUser!.uid;
+      final batch = _fs!.batch();
+      
+      // Get all documents in the user's tasks collection
+      final snapshot = await _fs!.collection('users').doc(uid).collection('tasks').get();
+      
+      // Add all documents to batch for deletion
+      for (final doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      
+      // Execute the batch delete
+      await batch.commit();
+      
+      _statusController.add('cleared-online-data');
+    } catch (e) {
+      _statusController.add('error');
+      throw Exception('Failed to clear online data: $e');
+    }
+  }
 }

@@ -65,6 +65,12 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
+    bundle {
+        storeArchive {
+            enable = false
+        }
+    }
 }
 
 flutter {

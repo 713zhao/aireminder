@@ -1,7 +1,7 @@
 name: aireminder
 description: AI-powered reminder and todo app with smart scheduling.
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.0+2
 environment:
   sdk: '>=2.18.0 <4.0.0'
 
@@ -25,6 +25,11 @@ dependencies:
   cloud_firestore: ^6.0.2
   google_sign_in: ^7.2.0
   google_mobile_ads: ^5.2.0
+  # Image processing and AI
+  image_picker: ^1.0.4
+  http: ^1.1.0
+  path_provider: ^2.1.1
+  mime: ^1.0.4
 
 dev_dependencies:
   flutter_test:

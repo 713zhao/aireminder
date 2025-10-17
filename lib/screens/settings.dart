@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import '../services/audio_priming.dart';
+import '../services/firestore_sync.dart';
+
+import '../data/hive_task_repository.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -14,6 +17,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _defaultSnooze = 10;
   bool _showAdBar = true;
   bool _voiceReminders = true;
+  bool _standaloneMode = true;
+  String _geminiApiKey = '';
+  final _geminiApiKeyController = TextEditingController();
   // debug-only auto-run removed
 
   @override
@@ -23,6 +29,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   _defaultSnooze = _box.get('defaultSnooze', defaultValue: 10) as int;
   _showAdBar = _box.get('showAdBar', defaultValue: true) as bool;
   _voiceReminders = _box.get('voiceReminders', defaultValue: true) as bool;
+  _standaloneMode = _box.get('standaloneMode', defaultValue: true) as bool;
+  _geminiApiKey = _box.get('geminiApiKey', defaultValue: '') as String;
+  _geminiApiKeyController.text = _geminiApiKey;
+  }
+
+  @override
+  void dispose() {
+    _geminiApiKeyController.dispose();
+    super.dispose();
   }
 
   void _setDefaultSnooze(int minutes) {
@@ -40,6 +55,151 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _setVoiceReminders(bool v) {
     setState(() => _voiceReminders = v);
     _box.put('voiceReminders', v);
+  }
+
+  void _setStandaloneMode(bool v) {
+    setState(() => _standaloneMode = v);
+    _box.put('standaloneMode', v);
+  }
+
+  void _setGeminiApiKey(String value) {
+    setState(() => _geminiApiKey = value);
+    _box.put('geminiApiKey', value);
+  }
+
+  Future<void> _clearAllData() async {
+    // Show confirmation dialog
+    final confirmed = await _showClearDataConfirmation();
+    if (!confirmed) return;
+
+    try {
+      // Show loading dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Expanded(child: Text('Clearing all data...')),
+            ],
+          ),
+        ),
+      );
+
+      // Clear local data
+      final repo = HiveTaskRepository();
+      await repo.clearAllLocalData();
+
+      // Clear all Hive boxes (tasks, backup, settings)
+      await Hive.box('tasks_box').clear();
+      await Hive.box('tasks_backup_box').clear();
+      await Hive.box('settings_box').clear();
+
+      // Clear all notifications (cancel individual notifications would need task iteration)
+
+      // Clear online data if user is signed in
+      try {
+        final syncService = FirestoreSyncService.instance;
+        if (syncService.isSignedIn) {
+          await syncService.clearAllOnlineData();
+        }
+      } catch (e) {
+        // Continue even if online clearing fails
+        print('Failed to clear online data: $e');
+      }
+
+      // Close loading dialog
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('All data cleared successfully. App will restart.'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+
+      // Exit the app after a brief delay
+      await Future.delayed(const Duration(seconds: 2));
+      if (mounted) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+
+    } catch (e) {
+      // Close loading dialog if still open
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+
+      // Show error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error clearing data: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<bool> _showClearDataConfirmation() async {
+    return await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning, color: Colors.red),
+            SizedBox(width: 8),
+            Text('Clear All Data'),
+          ],
+        ),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'This will permanently delete:',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 8),
+            Text('• All tasks and reminders'),
+            Text('• All settings and preferences'),
+            Text('• All backup data'),
+            Text('• All online synced data (if signed in)'),
+            SizedBox(height: 16),
+            Text(
+              'This action cannot be undone!',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.red,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Clear All Data'),
+          ),
+        ],
+      ),
+    ) ?? false;
   }
 
   // offlineOnly setting removed; offline handling uses backup by default.
@@ -88,10 +248,87 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Switch(value: _voiceReminders, onChanged: (v) => _setVoiceReminders(v)),
           ]),
           const SizedBox(height: 8),
-          // Offline-only toggle removed. App uses backup and server sync behavior by policy.
-          const SizedBox(height: 8),
-          // Auto-run dev sync removed from settings
+          Row(children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Standalone Mode'),
+                  Text(
+                    'Hide login button and work offline only',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            ),
+            Switch(value: _standaloneMode, onChanged: (v) => _setStandaloneMode(v)),
+          ]),
+          const SizedBox(height: 20),
+          // ===================== AI CONFIGURATION SECTION =====================
+          const Text(
+            'AI Configuration',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Google Gemini API Key',
+                style: TextStyle(fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _geminiApiKeyController,
+                decoration: InputDecoration(
+                  hintText: 'Enter your Gemini API key for image analysis',
+                  border: OutlineInputBorder(),
+                  suffixIcon: IconButton(
+                    icon: Icon(Icons.save),
+                    onPressed: () {
+                      _setGeminiApiKey(_geminiApiKeyController.text);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('API key saved successfully')),
+                      );
+                    },
+                  ),
+                ),
+                obscureText: true,
+                onChanged: (value) => _setGeminiApiKey(value),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Required for extracting event information from images. Get your API key from Google AI Studio.',
+                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          // ===================== DATA MANAGEMENT SECTION =====================
+          const Text(
+            'Data Management',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            onPressed: _clearAllData,
+            icon: const Icon(Icons.delete_forever, color: Colors.white),
+            label: const Text('Clear All Data'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 48),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Permanently delete all tasks, settings, and data. This action cannot be undone.',
+            style: TextStyle(
+              color: Colors.grey[600],
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 20),
           // Debug run button removed
           ElevatedButton(
             onPressed: () {

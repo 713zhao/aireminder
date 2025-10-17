@@ -7,7 +7,17 @@ import '../services/notification_service.dart';
 
 class TaskForm extends StatefulWidget {
   final String? taskId;
-  const TaskForm({super.key, this.taskId});
+  final String? initialTitle;
+  final String? initialNotes;
+  final DateTime? initialDueAt;
+  
+  const TaskForm({
+    super.key, 
+    this.taskId, 
+    this.initialTitle,
+    this.initialNotes,
+    this.initialDueAt,
+  });
 
   @override
   State<TaskForm> createState() => _TaskFormState();
@@ -33,8 +43,20 @@ class _TaskFormState extends State<TaskForm> {
   @override
   void initState() {
     super.initState();
+    
+    // Set initial values if provided
+    if (widget.initialTitle != null) {
+      _titleCtrl.text = widget.initialTitle!;
+    }
+    if (widget.initialNotes != null) {
+      _notesCtrl.text = widget.initialNotes!;
+    }
+    if (widget.initialDueAt != null) {
+      _dueAt = widget.initialDueAt;
+    }
+    
     if (widget.taskId != null) {
-      // load and prefill
+      // load and prefill existing task
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         final repo = HiveTaskRepository();
         final all = await repo.list();

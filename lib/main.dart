@@ -6,6 +6,7 @@ import 'services/notification_service.dart';
 import 'screens/task_detail.dart';
 import 'services/app_globals.dart';
 import 'data/hive_task_repository.dart';
+import 'services/settings_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
@@ -26,6 +27,7 @@ void main() async {
   await Hive.openBox('tasks_box');
   await Hive.openBox('tasks_backup_box');
   await Hive.openBox('settings_box');
+  await SettingsService.init();
   await notificationService.init();
   
   // Check for any overdue notifications and start voice reminders

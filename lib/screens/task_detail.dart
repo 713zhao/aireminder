@@ -31,10 +31,106 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
   Future<void> _markDone() async {
     if (_task == null) return;
+    
+    // Show confirmation dialog
+    final confirmed = await _showMarkDoneConfirmation();
+    if (!confirmed) return;
+    
+    // Cancel notification and delete task
     await notificationService.cancelByTaskId(_task!.id);
     await _repo.delete(_task!.id);
+    
     if (!mounted) return;
+    
+    // Show success message
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Task marked as done and deleted permanently'),
+        backgroundColor: Colors.green,
+      ),
+    );
+    
     Navigator.of(context).pop();
+  }
+
+  Future<bool> _showMarkDoneConfirmation() async {
+    final isRecurring = _task?.recurrence != null && _task!.recurrence!.isNotEmpty;
+    
+    return await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.check_circle_outline, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('Mark Done'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Are you sure you want to mark "${_task!.title}" as done?',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'This will permanently delete the task and cannot be undone.',
+              style: TextStyle(color: Colors.red),
+            ),
+            if (isRecurring) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  border: Border.all(color: Colors.orange.shade200),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.warning, color: Colors.orange.shade700, size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Recurring Task Warning',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.orange.shade700,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'This is a ${_task!.recurrence} recurring task. Marking it done will delete ALL future occurrences permanently.',
+                      style: TextStyle(color: Colors.orange.shade800),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isRecurring ? Colors.orange : Colors.green,
+              foregroundColor: Colors.white,
+            ),
+            child: Text(isRecurring ? 'Delete All Occurrences' : 'Mark Done'),
+          ),
+        ],
+      ),
+    ) ?? false;
   }
 
   Future<void> _toggleDisable() async {
