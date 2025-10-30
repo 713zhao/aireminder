@@ -4,12 +4,16 @@ import 'dart:convert';
 import '../data/hive_task_repository.dart';
 import '../models/task.dart';
 import '../services/notification_service.dart';
+import '../services/firestore_sync.dart';
 
 class TaskForm extends StatefulWidget {
   final String? taskId;
   final String? initialTitle;
   final String? initialNotes;
   final DateTime? initialDueAt;
+  final String? initialRecurrence;
+  final Set<int>? initialWeeklyDays;
+  final DateTime? initialRecurrenceEndDate;
   
   const TaskForm({
     super.key, 
@@ -17,6 +21,9 @@ class TaskForm extends StatefulWidget {
     this.initialTitle,
     this.initialNotes,
     this.initialDueAt,
+    this.initialRecurrence,
+    this.initialWeeklyDays,
+    this.initialRecurrenceEndDate,
   });
 
   @override
@@ -53,6 +60,15 @@ class _TaskFormState extends State<TaskForm> {
     }
     if (widget.initialDueAt != null) {
       _dueAt = widget.initialDueAt;
+    }
+    if (widget.initialRecurrence != null) {
+      _recurrence = widget.initialRecurrence!;
+    }
+    if (widget.initialWeeklyDays != null) {
+      _weeklyDays = widget.initialWeeklyDays!;
+    }
+    if (widget.initialRecurrenceEndDate != null) {
+      _recurrenceEndDate = widget.initialRecurrenceEndDate;
     }
     
     if (widget.taskId != null) {
@@ -187,6 +203,14 @@ class _TaskFormState extends State<TaskForm> {
         // Updating existing task
         final all = await repo.list();
         final existing = all.firstWhere((t) => t.id == widget.taskId, orElse: () => throw StateError('task not found'));
+        // Set modification info when updating
+        String? lastModifiedBy;
+        try {
+          if (FirestoreSyncService.instance.isSignedIn) {
+            lastModifiedBy = FirestoreSyncService.instance.currentUserEmail;
+          }
+        } catch (_) {}
+        
         final updated = Task(
           id: existing.id,
           title: _titleCtrl.text.trim(),
@@ -200,6 +224,10 @@ class _TaskFormState extends State<TaskForm> {
           remindBeforeMinutes: _remindBeforeMinutes,
           recurrenceEndDate: _recurrenceEndDate,
           weeklyDays: _weeklyDays.isEmpty ? null : _weeklyDays.toList(),
+          ownerId: existing.ownerId, // Preserve original owner
+          sharedWith: existing.sharedWith, // Preserve sharing settings
+          isShared: existing.isShared,
+          lastModifiedBy: lastModifiedBy,
         );
         await repo.save(updated);
         newOrUpdated = updated;

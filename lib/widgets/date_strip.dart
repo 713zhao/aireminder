@@ -118,15 +118,20 @@ Future<Map<String, int>> _computeTaskCounts(Map<String, dynamic> payload) async 
       case 'daily':
         return !target.isBefore(dueDate);
       case 'weekly':
-        if (!target.isBefore(dueDate) && target.weekday == dueDate.weekday) {
-          // For weekly tasks, also check if specific weekdays are selected
-          final weeklyDays = t['weeklyDays'] as List<dynamic>?;
-          if (weeklyDays != null && weeklyDays.isNotEmpty) {
-            return weeklyDays.contains(target.weekday);
-          }
-          return true;
+        // Check if target date is after or on start date
+        if (target.isBefore(dueDate)) {
+          return false;
         }
-        return false;
+        
+        // For weekly tasks with specific weekdays selected
+        final weeklyDays = t['weeklyDays'] as List<dynamic>?;
+        if (weeklyDays != null && weeklyDays.isNotEmpty) {
+          // Show on any of the selected weekdays
+          return weeklyDays.contains(target.weekday);
+        } else {
+          // Default weekly behavior: only on the original due date's weekday
+          return target.weekday == dueDate.weekday;
+        }
       case 'monthly':
         if (dueDate.day == target.day && !target.isBefore(dueDate)) return true;
         return false;

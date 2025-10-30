@@ -1,6 +1,6 @@
 {
-  "name": "Todo Reminder App",
-  "short_name": "TodoReminder",
+  "name": "AI Reminder App",
+  "short_name": "AIReminder",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

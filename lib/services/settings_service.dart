@@ -24,6 +24,9 @@ class SettingsService {
   /// Get the Gemini API key
   static String get geminiApiKey => _box.get('geminiApiKey', defaultValue: '') as String;
   
+  /// Get the automatic family sync setting (only for online users)
+  static bool get autoSyncFamily => _box.get('autoSyncFamily', defaultValue: true) as bool;
+  
   /// Set standalone mode
   static void setStandaloneMode(bool value) {
     _box.put('standaloneMode', value);
@@ -47,5 +50,10 @@ class SettingsService {
   /// Set Gemini API key
   static void setGeminiApiKey(String value) {
     _box.put('geminiApiKey', value);
+  }
+  
+  /// Set automatic family sync
+  static void setAutoSyncFamily(bool value) {
+    _box.put('autoSyncFamily', value);
   }
 }

@@ -40,6 +40,18 @@ class HiveTaskRepository {
     List<int>? weeklyDays,
   }) async {
     final id = DateTime.now().microsecondsSinceEpoch.toString();
+    
+    // Set owner information if user is signed in
+    String? ownerId;
+    String? lastModifiedBy;
+    try {
+      if (FirestoreSyncService.instance.isSignedIn) {
+        final userEmail = FirestoreSyncService.instance.currentUserEmail;
+        ownerId = userEmail;
+        lastModifiedBy = userEmail;
+      }
+    } catch (_) {}
+    
     final task = Task(
       id: id,
       title: title,
@@ -50,6 +62,8 @@ class HiveTaskRepository {
       remindBeforeMinutes: remindBeforeMinutes,
       recurrenceEndDate: recurrenceEndDate,
       weeklyDays: weeklyDays,
+      ownerId: ownerId,
+      lastModifiedBy: lastModifiedBy,
     );
     await _box.put(id, jsonEncode(task.toJson()));
     try {

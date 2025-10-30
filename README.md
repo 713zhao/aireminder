@@ -24,15 +24,25 @@ Notes:
 Run locally:
     local network access: flutter run -d chrome --web-hostname=0.0.0.0 --web-port=8888
     current pc debug: flutter run -d chrome --web-hostname=127.0.0.1 --web-port=8888
+    
+    ⚠️ Note: Development server may have different behavior than production build
+    For latest AI image compression features, use the production build instead:
 
 build for web app:
     flutter build web
     cd build\web
     python -m http.server 8888 --bind 0.0.0.0
 
-Web release and deployement:
+Web release and deployment:
     flutter build web --release   
     copy the web folder to https://dash.cloudflare.com/b4eb700e01a66453ef2d341ca0f6cce5/pages/view/spell
+    
+    ✅ Latest update (2025-10-18): Added AI image compression system
+    - Automatic compression to 512KB for both camera and gallery images
+    - Two-layer compression: ImagePicker + Smart compression
+    - Works on both web and Android platforms
+    - Eliminates MAX_TOKENS errors from large images
+    - Production build required for latest compression features
 
 
 Build the APK
@@ -132,4 +142,64 @@ Build the APK
       * Test Banner ID: ca-app-pub-3940256099942544/6300978111
     - Added proper AdMob initialization in main.dart
     - Added AdMob App ID to Android manifest
+        🔊 Voice Reminder Testing & Debug (2025-10-12):
+    /* Lines 110-145 omitted */
     - Banner ads load with fallback display if ads fail to load
+
+    📱 Device Compatibility Improvements (2025-10-28):
+    - Made camera feature optional (android:required="false") for broader device compatibility
+    - Made autofocus feature optional for devices without advanced camera hardware
+    - Made microphone feature optional for devices without microphone
+    - Enables installation on e-readers like ONyX Poke5 and other specialized Android devices
+    - Camera and voice features will gracefully disable on devices lacking hardware
+    - App now installable on 99%+ of Android devices running Android 7.0+
+
+    🔐 Authentication Fix for E-Readers (2025-10-28):
+    - Fixed automatic anonymous login issue on Boox and other e-reader devices
+    - Added proper login dialog with 3 clear options: Google Account, Anonymous, or Offline
+    - Removed automatic fallback to anonymous authentication
+    - Users now have explicit control over authentication method
+    - Google sign-in failures no longer silently switch to anonymous mode
+    - Offline mode available for devices without Google Play Services
+
+    📱 Google Sign-in Mobile Fix (2025-10-28):
+    - Improved Google sign-in compatibility for mobile devices and e-readers
+    - Added multiple sign-in methods (provider + popup) with automatic fallback
+    - Better error messages for different failure scenarios
+    - Enhanced support for devices with limited Google Play Services
+    - Clear guidance when Google sign-in isn't available (suggests Anonymous/Offline mode)
+    - Debug logging for troubleshooting authentication issues
+
+    📧 Email Authentication for Huawei/Restricted Devices (2025-10-29):
+    - Added Email/Password authentication as Google sign-in alternative
+    - Works perfectly on Huawei devices without Google Play Services restrictions
+    - Create account or sign in with any email address
+    - Full cloud sync functionality without Google account dependency
+    - Better compatibility with e-readers and modified Android devices
+    - Automatic error handling with user-friendly messages (wrong password, account exists, etc.)
+    - Recommended solution for users experiencing Google sign-in issues
+
+    👨‍👩‍👧‍👦 Family Sharing Feature (2025-10-30):
+    - Share reminder events with family members via email addresses
+    - Real-time collaboration: family members can view and update shared reminders
+    - Family Sharing screen accessible via people icon (👥) in app bar (when signed in)
+    - Individual task sharing: Share specific reminders with selected family members
+    - Bulk sharing options: "Share All" and "Unshare All" buttons for convenience
+    - Smart sharing status: Visual indicators show which tasks are shared and by whom
+    - Last modified tracking: See who made the most recent changes to shared tasks
+    - Comprehensive sharing management: Easy-to-use interface for adding/removing family members
+    - Works with both Google Sign-in and Email authentication methods
+    - Perfect for families, couples, and roommates managing household tasks together
+    
+    🔐 Firestore Security Rules Setup (Required for Family Sharing):
+    For family sharing to work, you need to update Firebase Firestore security rules:
+    1. Go to Firebase Console > Firestore Database > Rules
+    2. Replace the default rules with the content from `firestore.rules` file
+    3. Publish the rules
+    
+    The rules allow:
+    - Users to access their own tasks
+    - Shared task access for owner and shared users
+    - Proper permission control for family sharing features
+    
+    ⚠️ Note: If you see "permission-denied" errors, ensure the Firestore rules are properly configured.

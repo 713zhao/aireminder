@@ -16,6 +16,10 @@ class Task {
     this.remindBeforeMinutes = 10,
     this.recurrenceEndDate,
     this.weeklyDays,
+    this.ownerId,
+    this.sharedWith,
+    this.isShared = false,
+    this.lastModifiedBy,
   });
 
   final String id;
@@ -33,6 +37,11 @@ class Task {
   int remindBeforeMinutes;
   DateTime? recurrenceEndDate;
   List<int>? weeklyDays; // List of weekday numbers (1=Monday, 7=Sunday)
+  // Family sharing fields
+  String? ownerId; // Email of the task creator
+  List<String>? sharedWith; // List of emails that can access this task
+  bool isShared = false;
+  String? lastModifiedBy; // Email of last person who modified
   // Firestore sync metadata
   String? serverId;
   DateTime? updatedAt;
@@ -54,6 +63,10 @@ class Task {
         'remindBeforeMinutes': remindBeforeMinutes,
         'recurrenceEndDate': recurrenceEndDate?.toIso8601String(),
         'weeklyDays': weeklyDays,
+        'ownerId': ownerId,
+        'sharedWith': sharedWith,
+        'isShared': isShared,
+        'lastModifiedBy': lastModifiedBy,
         'serverId': serverId,
         'updatedAt': updatedAt?.toIso8601String(),
         'deleted': deleted,
@@ -75,6 +88,10 @@ class Task {
         remindBeforeMinutes: j['remindBeforeMinutes'] as int? ?? 10,
         recurrenceEndDate: j['recurrenceEndDate'] != null ? DateTime.parse(j['recurrenceEndDate'] as String) : null,
         weeklyDays: j['weeklyDays'] != null ? List<int>.from(j['weeklyDays'] as List) : null,
+        ownerId: j['ownerId'] as String?,
+        sharedWith: j['sharedWith'] != null ? List<String>.from(j['sharedWith'] as List) : null,
+        isShared: j['isShared'] as bool? ?? false,
+        lastModifiedBy: j['lastModifiedBy'] as String?,
   )..serverId = j['serverId'] as String?
     ..updatedAt = j['updatedAt'] != null ? DateTime.parse(j['updatedAt'] as String) : null
     ..deleted = j['deleted'] as bool? ?? false

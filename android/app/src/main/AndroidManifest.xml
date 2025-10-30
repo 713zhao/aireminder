@@ -1,4 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Make camera an optional feature so devices without a camera can still install the app -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    
+    <!-- Make autofocus optional as well -->
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    
+    <!-- Make microphone optional for devices without microphone -->
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+
     <!-- Required for Firebase authentication and network access -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -6,6 +15,11 @@
     <!-- Required for speech-to-text voice input functionality -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MICROPHONE" />
+    
+    <!-- Required for image capture and gallery access -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     
     <application
         android:label="AI Reminder"

@@ -87,15 +87,19 @@ class _TasksForDateState extends State<TasksForDate> {
       case 'daily':
         return !target.isBefore(due);
       case 'weekly':
-        // same weekday and not before start
-        if (!target.isBefore(due) && target.weekday == due.weekday) {
-          // For weekly tasks, also check if specific weekdays are selected
-          if (t.weeklyDays != null && t.weeklyDays!.isNotEmpty) {
-            return t.weeklyDays!.contains(target.weekday);
-          }
-          return true;
+        // Check if target date is after or on start date
+        if (target.isBefore(due)) {
+          return false;
         }
-        return false;
+        
+        // For weekly tasks with specific weekdays selected
+        if (t.weeklyDays != null && t.weeklyDays!.isNotEmpty) {
+          // Show on any of the selected weekdays
+          return t.weeklyDays!.contains(target.weekday);
+        } else {
+          // Default weekly behavior: only on the original due date's weekday
+          return target.weekday == due.weekday;
+        }
       case 'monthly':
         // same day-of-month (best-effort)
         if (due.day == target.day && !target.isBefore(due)) return true;

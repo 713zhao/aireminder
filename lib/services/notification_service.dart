@@ -92,7 +92,7 @@ class NotificationService {
           android: AndroidNotificationDetails(
             'todo_channel',
             'Todos',
-            channelDescription: 'Todo reminders',
+            channelDescription: 'AI reminders',
             actions: <AndroidNotificationAction>[
               const AndroidNotificationAction('stop', 'Stop Readout'),
               const AndroidNotificationAction('snooze_5', 'Snooze 5m'),
@@ -132,7 +132,7 @@ class NotificationService {
         android: AndroidNotificationDetails(
           'todo_channel',
           'Todos',
-          channelDescription: 'Todo reminders',
+          channelDescription: 'AI reminders',
   actions: <AndroidNotificationAction>[
     const AndroidNotificationAction('stop', 'Stop Readout'),
     const AndroidNotificationAction('snooze_5', 'Snooze 5m'),
