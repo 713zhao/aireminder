@@ -10,7 +10,6 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import '../firebase_options.dart' as fo;
 import '../models/task.dart';
 import '../data/hive_task_repository.dart';
-import 'settings_service.dart';
 
 /// FirestoreSyncService
 /// - Initializes Firebase (using generated firebase_options when available)
@@ -651,10 +650,10 @@ class FirestoreSyncService {
       _handleListenError(e);
     });
     
-    // Listen to shared tasks (only if auto-sync is enabled)
+    // Listen to shared tasks
     final userEmail = _auth!.currentUser!.email;
-    if (userEmail != null && SettingsService.autoSyncFamily) {
-      print('[FirestoreSync] Setting up shared task listener (auto-sync enabled)');
+    if (userEmail != null) {
+      print('[FirestoreSync] Setting up shared task listener');
       _sharedSub = _fs!
           .collection('sharing_index')
           .doc(userEmail)

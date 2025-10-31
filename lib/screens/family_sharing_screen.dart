@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../services/firestore_sync.dart';
-import '../services/settings_service.dart';
 import '../models/task.dart';
 
 class FamilySharingScreen extends StatefulWidget {
@@ -533,16 +532,15 @@ class _FamilySharingScreenState extends State<FamilySharingScreen> {
                 ),
                 onTap: () => Future.delayed(Duration.zero, _testPermissions),
               ),
-              // Manual sync option (when auto-sync is disabled)
-              if (!SettingsService.autoSyncFamily)
-                PopupMenuItem(
-                  child: const ListTile(
-                    leading: Icon(Icons.sync),
-                    title: Text('Manual Sync Family Tasks'),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  onTap: () => Future.delayed(Duration.zero, _manualSyncFamily),
+              // Manual sync option
+              PopupMenuItem(
+                child: const ListTile(
+                  leading: Icon(Icons.sync),
+                  title: Text('Manual Sync Family Tasks'),
+                  contentPadding: EdgeInsets.zero,
                 ),
+                onTap: () => Future.delayed(Duration.zero, _manualSyncFamily),
+              ),
             ],
           ),
           IconButton(
@@ -575,7 +573,7 @@ class _FamilySharingScreenState extends State<FamilySharingScreen> {
                                 SizedBox(width: 12),
                                 Expanded(
                                   child: Text(
-                                    'Share your reminder events with family members. They can view and update shared reminders in real-time.',
+                                    'Share your reminder events with family members. Use manual sync to get the latest updates.',
                                     style: TextStyle(color: Colors.blue),
                                   ),
                                 ),
@@ -590,36 +588,6 @@ class _FamilySharingScreenState extends State<FamilySharingScreen> {
                                 _buildStatCard('Shared', _ownTasks.where((t) => t.isShared).length.toString(), Icons.people),
                                 _buildStatCard('Received', _sharedTasks.length.toString(), Icons.inbox),
                               ],
-                            ),
-                            const SizedBox(height: 12),
-                            // Sync status
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: SettingsService.autoSyncFamily ? Colors.green[100] : Colors.orange[100],
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    SettingsService.autoSyncFamily ? Icons.sync : Icons.sync_disabled,
-                                    size: 16,
-                                    color: SettingsService.autoSyncFamily ? Colors.green[700] : Colors.orange[700],
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    SettingsService.autoSyncFamily 
-                                      ? 'Auto-sync enabled' 
-                                      : 'Auto-sync disabled',
-                                    style: TextStyle(
-                                      color: SettingsService.autoSyncFamily ? Colors.green[700] : Colors.orange[700],
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
                             ),
                           ],
                         ),

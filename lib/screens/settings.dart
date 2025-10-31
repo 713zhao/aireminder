@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import '../services/audio_priming.dart';
 import '../services/firestore_sync.dart';
-import '../services/settings_service.dart';
 
 import '../data/hive_task_repository.dart';
 
@@ -19,7 +18,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _showAdBar = true;
   bool _voiceReminders = true;
   bool _standaloneMode = true;
-  bool _autoSyncFamily = true;
   String _geminiApiKey = '';
   final _geminiApiKeyController = TextEditingController();
   // debug-only auto-run removed
@@ -32,7 +30,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   _showAdBar = _box.get('showAdBar', defaultValue: true) as bool;
   _voiceReminders = _box.get('voiceReminders', defaultValue: true) as bool;
   _standaloneMode = _box.get('standaloneMode', defaultValue: true) as bool;
-  _autoSyncFamily = _box.get('autoSyncFamily', defaultValue: true) as bool;
   _geminiApiKey = _box.get('geminiApiKey', defaultValue: '') as String;
   _geminiApiKeyController.text = _geminiApiKey;
   }
@@ -63,28 +60,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _setStandaloneMode(bool v) {
     setState(() => _standaloneMode = v);
     _box.put('standaloneMode', v);
-  }
-
-  void _setAutoSyncFamily(bool v) {
-    setState(() => _autoSyncFamily = v);
-    _box.put('autoSyncFamily', v);
-    
-    // Only restart sync listeners if user is actually signed in
-    if (FirestoreSyncService.instance.isSignedIn) {
-      FirestoreSyncService.instance.restartSyncListeners();
-    }
-    
-    // Show feedback to user
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          v 
-            ? 'Family auto-sync enabled' 
-            : 'Family auto-sync disabled - use manual sync when needed',
-        ),
-        duration: const Duration(seconds: 2),
-      ),
-    );
   }
 
   void _setGeminiApiKey(String value) {
@@ -289,42 +264,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Switch(value: _standaloneMode, onChanged: (v) => _setStandaloneMode(v)),
           ]),
           const SizedBox(height: 8),
-          // Family sync setting (only show when not in standalone mode)
-          if (!_standaloneMode) ...[
-            StreamBuilder<String?>(
-              stream: FirestoreSyncService.instance.userChanges,
-              builder: (context, snapshot) {
-                final isSignedIn = FirestoreSyncService.instance.isSignedIn;
-                
-                return Row(children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Auto-sync Family Tasks'),
-                        Text(
-                          isSignedIn 
-                            ? 'Automatically sync reminders with family members'
-                            : 'Sign in required to use family sync',
-                          style: TextStyle(
-                            fontSize: 12, 
-                            color: isSignedIn ? Colors.grey[600] : Colors.orange[600],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Switch(
-                    value: _autoSyncFamily,
-                    onChanged: isSignedIn 
-                      ? (v) => _setAutoSyncFamily(v)
-                      : null, // Disabled when not signed in
-                  ),
-                ]);
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
           const SizedBox(height: 20),
           // ===================== AI CONFIGURATION SECTION =====================
           const Text(
