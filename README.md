@@ -137,9 +137,9 @@ Build the APK
     📱 AdMob Integration (2025-10-12):
     - Integrated Google Mobile Ads SDK (google_mobile_ads: ^5.2.0)
     - Replaced custom ad bar with Google AdMob banner ads
-    - Using Google's official test IDs for safe development/testing:
-      * Test App ID: ca-app-pub-3940256099942544~3347511713
-      * Test Banner ID: ca-app-pub-3940256099942544/6300978111
+    - Configured with production AdMob IDs:
+      * Production App ID: ca-app-pub-3737089294643612~3737089294
+      * Production Banner ID: ca-app-pub-3737089294643612/5965493414
     - Added proper AdMob initialization in main.dart
     - Added AdMob App ID to Android manifest
         🔊 Voice Reminder Testing & Debug (2025-10-12):
@@ -177,6 +177,8 @@ Build the APK
     - Full cloud sync functionality without Google account dependency
     - Better compatibility with e-readers and modified Android devices
     - Automatic error handling with user-friendly messages (wrong password, account exists, etc.)
+    - Automatic username restoration: Previous email automatically filled in login form
+    - NEW (2025-11-23): Credential auto-fill & auto-login of last account (password stored locally with light obfuscation)
     - Recommended solution for users experiencing Google sign-in issues
 
     👨‍👩‍👧‍👦 Family Sharing Feature (2025-10-30):
@@ -203,3 +205,59 @@ Build the APK
     - Proper permission control for family sharing features
     
     ⚠️ Note: If you see "permission-denied" errors, ensure the Firestore rules are properly configured.
+    
+    🤖 Enhanced AI Configuration (2025-10-31):
+    - Multiple AI Provider Support: Choose from Google Gemini, OpenAI, DeepSeek, or Qianwen (Alibaba)
+    - Smart Model Selection: Popular models pre-selected as defaults (e.g., gemini-2.5-flash, gpt-4o-mini)
+    - Editable Model Names: Users can modify or change model names for custom configurations
+    - Provider-Specific Settings: Each provider has tailored model options and API key guidance
+    - Backwards Compatibility: Existing Gemini API keys automatically migrate to new system
+    - Unified API Key Management: Single interface for managing different provider credentials
+    - Intelligent Validation: System checks provider compatibility before image analysis
+    - Default Provider: Google Gemini (gemini-2.5-flash) for optimal image analysis performance
+    - Easy Provider Switching: Change AI providers on-the-fly without losing configurations
+    - Collapsible UI: AI configuration is hidden by default, expandable with one click for cleaner settings
+    
+    Available Providers & Popular Models:
+    • Google Gemini: gemini-2.5-flash (default), gemini-1.5-flash, gemini-1.5-pro, gemini-2.0-flash-exp, gemini-1.0-pro
+    • OpenAI: gpt-4o-mini (default), gpt-4o, gpt-4-turbo, gpt-3.5-turbo
+    • DeepSeek: deepseek-chat (default), deepseek-coder, deepseek-reasoner
+    • Qianwen: qwen-turbo (default), qwen-plus, qwen-max, qwen-coder-turbo
+    
+    📋 Manual-Only Family Sharing (2025-10-31):
+    - Removed automatic family sync to give users full control
+    - All family sharing operations are now manual-only
+    - Use "Manual Sync Family Tasks" from the menu to update shared tasks
+    - No background auto-sync activity - sync only when you want to
+    - Better battery life and network usage with on-demand synchronization
+
+    🔁 Repeat Tasks (Daily / Weekly / Monthly / One Time) (2025-11-23):
+    - Tasks can now repeat Daily, Weekly (with selectable weekdays), Monthly, or be One Time
+    - Weekly tasks: choose any combination of weekdays (Mon–Sun) via chips in the task form
+    - Monthly tasks: repeat on the same day-of-month after the start date
+    - Daily tasks: shown on every day from their start date onward
+    - End date option: limit how long a recurring task keeps appearing
+    - Virtual occurrences are generated automatically (no need to create copies)
+    - Recurring tasks display an icon (day/week/month) for quick visual identification
+    - Editing a recurring task immediately updates all future virtual occurrences
+
+    🔐 Auto Login & Credential Recall (2025-11-23):
+    - Stores last successful email + password locally with light obfuscation
+    - Automatically signs in on app launch (unless standalone mode is enabled)
+    - Email field auto-fills previous credentials; typing a matching email restores its password
+    - Fast frictionless re-entry for frequent users on personal devices
+    - Implementation uses reversible obfuscation (NOT strong encryption) – replace with secure storage for production hardening
+    - Disable auto-login by switching to Standalone Mode in Settings
+    
+    🔁 Repeat / Recurrence Support (2025-11-23):
+    - Repeat attribute added: None (one-time), Daily, Weekly, Monthly
+    - Weekly tasks support multiple day selection (e.g., Mon/Wed/Fri)
+    - Optional end date limits repetition window
+    - Virtual occurrences automatically displayed on matching dates (no duplicate storage)
+    - Daily repeats schedule repeating notifications; others appear per-occurrence
+    - AI image extraction pre-fills recurrence when detected (e.g., "every Monday")
+    - Future roadmap: yearly recurrence & custom interval rules
+
+    🔐 Credential Storage Note:
+    - Email/password stored locally with reversible obfuscation for convenience (NOT strong encryption)
+    - For higher security deployments integrate platform secure storage (Android Keystore / iOS Keychain)

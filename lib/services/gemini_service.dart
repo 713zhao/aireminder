@@ -8,7 +8,10 @@ import 'package:image/image.dart' as img;
 import 'settings_service.dart';
 
 class GeminiService {
-  static const String _baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+  static String get _baseUrl {
+    final model = SettingsService.aiModel;
+    return 'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent';
+  }
   
   /// Compress image if it's too large
   static Uint8List _compressImage(Uint8List imageBytes, {int maxSizeKB = 512}) {
@@ -71,7 +74,16 @@ class GeminiService {
   
   /// Extract event information from an image using Gemini API
   static Future<Map<String, dynamic>?> extractEventFromImage(dynamic imageSource) async {
-    final apiKey = SettingsService.geminiApiKey;
+    // Check if AI provider is Gemini and get appropriate API key
+    final aiProvider = SettingsService.aiProvider;
+    if (aiProvider != 'gemini') {
+      throw Exception('Current AI provider ($aiProvider) does not support image analysis. Please switch to Google Gemini in Settings.');
+    }
+    
+    final apiKey = SettingsService.aiApiKey.isNotEmpty 
+        ? SettingsService.aiApiKey 
+        : SettingsService.geminiApiKey; // Fallback for backwards compatibility
+        
     if (apiKey.isEmpty) {
       throw Exception('Gemini API key is not configured. Please set it in Settings.');
     }

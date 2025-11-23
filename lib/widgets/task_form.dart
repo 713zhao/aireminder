@@ -329,7 +329,7 @@ class _TaskFormState extends State<TaskForm> {
               DropdownButtonFormField<String>(
                 initialValue: _recurrence,
                 items: const [
-                  DropdownMenuItem(value: 'none', child: Text('No recurrence')),
+                  DropdownMenuItem(value: 'none', child: Text('One Time (no repeat)')),
                   DropdownMenuItem(value: 'daily', child: Text('Daily')),
                   DropdownMenuItem(value: 'weekly', child: Text('Weekly')),
                   DropdownMenuItem(value: 'monthly', child: Text('Monthly')),

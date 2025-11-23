@@ -29,6 +29,7 @@ class _FamilySharingScreenState extends State<FamilySharingScreen> {
   }
 
   Future<void> _loadTasks() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       // Force refresh from server to get the latest data
@@ -37,12 +38,14 @@ class _FamilySharingScreenState extends State<FamilySharingScreen> {
       final ownTasks = await _syncService.fetchRemoteTasks();
       final sharedTasks = await _syncService.fetchSharedTasks();
       
+      if (!mounted) return;
       setState(() {
         _ownTasks = ownTasks;
         _sharedTasks = sharedTasks;
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

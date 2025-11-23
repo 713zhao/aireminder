@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 /// AdMob banner advertisement bar displayed at the top of the app body.
-/// Uses Google AdMob test IDs for development/testing on mobile platforms.
+/// Uses production Google AdMob IDs for live advertising on mobile platforms.
 /// Shows fallback content on web platform.
 /// The visibility is persisted in the `settings_box` under `showAdBar` (bool).
 class AdBar extends StatefulWidget {
@@ -21,8 +21,8 @@ class _AdBarState extends State<AdBar> {
   bool _isBannerLoaded = false;
   bool _isMobilePlatform = false;
 
-  // Google AdMob Test IDs (safe for development and testing)
-  static const String _testBannerAdUnitId = 'ca-app-pub-3940256099942544/6300978111'; // Android test banner ID
+  // Production AdMob IDs
+  static const String _bannerAdUnitId = 'ca-app-pub-3737089294643612/5965493414'; // Production banner ID
 
   @override
   void initState() {
@@ -41,7 +41,7 @@ class _AdBarState extends State<AdBar> {
     
     try {
       _bannerAd = BannerAd(
-        adUnitId: _testBannerAdUnitId,
+        adUnitId: _bannerAdUnitId,
         size: AdSize.banner,
         request: const AdRequest(),
         listener: BannerAdListener(

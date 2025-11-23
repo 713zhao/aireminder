@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
+import 'dart:async';
 import '../services/audio_priming.dart';
 import '../services/firestore_sync.dart';
-
+import 'family_sharing_screen.dart';
 import '../data/hive_task_repository.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -19,7 +20,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _voiceReminders = true;
   bool _standaloneMode = true;
   String _geminiApiKey = '';
+  String _aiProvider = 'gemini';
+  String _aiModel = 'gemini-2.5-flash';
+  String _aiApiKey = '';
+  bool _aiConfigExpanded = false;
   final _geminiApiKeyController = TextEditingController();
+  final _aiApiKeyController = TextEditingController();
+  String? _userEmail;
+  StreamSubscription<String?>? _userSub;
   // debug-only auto-run removed
 
   @override
@@ -31,12 +39,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
   _voiceReminders = _box.get('voiceReminders', defaultValue: true) as bool;
   _standaloneMode = _box.get('standaloneMode', defaultValue: true) as bool;
   _geminiApiKey = _box.get('geminiApiKey', defaultValue: '') as String;
+  _aiProvider = _box.get('aiProvider', defaultValue: 'gemini') as String;
+  _aiModel = _box.get('aiModel', defaultValue: 'gemini-2.5-flash') as String;
+  _aiApiKey = _box.get('aiApiKey', defaultValue: _geminiApiKey) as String;
   _geminiApiKeyController.text = _geminiApiKey;
+  _aiApiKeyController.text = _aiApiKey;
+  
+  // Get current user email
+  _userEmail = FirestoreSyncService.instance.currentUserEmail;
+  
+  // Listen for user sign-in changes
+  _userSub = FirestoreSyncService.instance.userChanges.listen((email) {
+    if (mounted) {
+      setState(() {
+        _userEmail = email;
+      });
+    }
+  });
   }
 
   @override
   void dispose() {
     _geminiApiKeyController.dispose();
+    _aiApiKeyController.dispose();
+    _userSub?.cancel();
     super.dispose();
   }
 
@@ -62,9 +88,119 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _box.put('standaloneMode', v);
   }
 
-  void _setGeminiApiKey(String value) {
-    setState(() => _geminiApiKey = value);
-    _box.put('geminiApiKey', value);
+  void _setAiProvider(String value) {
+    setState(() {
+      _aiProvider = value;
+      // Set default model for the provider
+      _aiModel = _getDefaultModelForProvider(value);
+      // Migrate API key if switching from Gemini
+      if (value == 'gemini' && _aiApiKey.isEmpty && _geminiApiKey.isNotEmpty) {
+        _aiApiKey = _geminiApiKey;
+        _aiApiKeyController.text = _aiApiKey;
+      } else if (value != 'gemini') {
+        _aiApiKey = '';
+        _aiApiKeyController.text = '';
+      }
+    });
+    _box.put('aiProvider', value);
+    _box.put('aiModel', _aiModel);
+    _box.put('aiApiKey', _aiApiKey);
+  }
+
+  void _setAiModel(String value) {
+    setState(() => _aiModel = value);
+    _box.put('aiModel', value);
+  }
+
+  void _setAiApiKey(String value) {
+    setState(() => _aiApiKey = value);
+    _box.put('aiApiKey', value);
+    // Also update Gemini API key if current provider is Gemini
+    if (_aiProvider == 'gemini') {
+      _geminiApiKey = value;
+      _geminiApiKeyController.text = value;
+      _box.put('geminiApiKey', value);
+    }
+  }
+
+  String _getDefaultModelForProvider(String provider) {
+    switch (provider) {
+      case 'gemini':
+        return 'gemini-2.5-flash';
+      case 'openai':
+        return 'gpt-4o-mini';
+      case 'deepseek':
+        return 'deepseek-chat';
+      case 'qianwen':
+        return 'qwen-turbo';
+      default:
+        return 'gemini-1.5-flash';
+    }
+  }
+
+  List<String> _getModelsForProvider(String provider) {
+    switch (provider) {
+      case 'gemini':
+        return [
+          'gemini-2.5-flash',
+          'gemini-1.5-flash',
+          'gemini-1.5-pro',
+          'gemini-2.0-flash-exp',
+          'gemini-1.0-pro',
+        ];
+      case 'openai':
+        return [
+          'gpt-4o-mini',
+          'gpt-4o',
+          'gpt-4-turbo',
+          'gpt-3.5-turbo',
+        ];
+      case 'deepseek':
+        return [
+          'deepseek-chat',
+          'deepseek-coder',
+          'deepseek-reasoner',
+        ];
+      case 'qianwen':
+        return [
+          'qwen-turbo',
+          'qwen-plus',
+          'qwen-max',
+          'qwen-coder-turbo',
+        ];
+      default:
+        return ['gemini-2.5-flash'];
+    }
+  }
+
+  String _getProviderDisplayName(String provider) {
+    switch (provider) {
+      case 'gemini':
+        return 'Google Gemini';
+      case 'openai':
+        return 'OpenAI';
+      case 'deepseek':
+        return 'DeepSeek';
+      case 'qianwen':
+        return 'Qianwen (Alibaba)';
+      default:
+        return provider;
+    }
+  }
+
+  String _getApiKeyHint(String provider) {
+    switch (provider) {
+      case 'gemini':
+        return 'Get from Google AI Studio (ai.google.dev)';
+      case 'openai':
+        return 'Get from OpenAI Platform (platform.openai.com)';
+      case 'deepseek':
+        return 'Get from DeepSeek Platform (platform.deepseek.com)';
+      case 'qianwen':
+        return 'Get from Alibaba Cloud Console';
+      default:
+        return 'Enter your API key';
+    }
   }
 
   Future<void> _clearAllData() async {
@@ -266,49 +402,160 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 8),
           const SizedBox(height: 20),
           // ===================== AI CONFIGURATION SECTION =====================
-          const Text(
-            'AI Configuration',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 12),
           Card(
             margin: const EdgeInsets.symmetric(vertical: 8),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Google Gemini API Key',
-                    style: TextStyle(fontWeight: FontWeight.w500),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _geminiApiKeyController,
-                    decoration: InputDecoration(
-                      hintText: 'Enter API key...',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                      suffixIcon: IconButton(
-                        icon: Icon(Icons.save, size: 20),
-                        onPressed: () {
-                          _setGeminiApiKey(_geminiApiKeyController.text);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('API key saved')),
-                          );
-                        },
-                      ),
+            child: Column(
+              children: [
+                InkWell(
+                  onTap: () {
+                    setState(() {
+                      _aiConfigExpanded = !_aiConfigExpanded;
+                    });
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.smart_toy, color: Colors.blue),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'AI Configuration',
+                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                              ),
+                              Text(
+                                'Configure AI provider and model for image analysis',
+                                style: TextStyle(fontSize: 12, color: Colors.grey),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(
+                          _aiConfigExpanded ? Icons.expand_less : Icons.expand_more,
+                          color: Colors.blue,
+                        ),
+                      ],
                     ),
-                    obscureText: true,
-                    onChanged: (value) => _setGeminiApiKey(value),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Required for image analysis. Get from Google AI Studio.',
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                ),
+                if (_aiConfigExpanded) ...[
+                  const Divider(height: 1),
+                  const SizedBox(height: 12),
+                  
+                  // AI Provider Selection
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'AI Provider',
+                          style: TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String>(
+                          initialValue: _aiProvider,
+                          decoration: const InputDecoration(
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                          items: const [
+                            DropdownMenuItem(value: 'gemini', child: Text('Google Gemini')),
+                            DropdownMenuItem(value: 'openai', child: Text('OpenAI')),
+                            DropdownMenuItem(value: 'deepseek', child: Text('DeepSeek')),
+                            DropdownMenuItem(value: 'qianwen', child: Text('Qianwen (Alibaba)')),
+                          ],
+                          onChanged: (value) {
+                            if (value != null) {
+                              _setAiProvider(value);
+                            }
+                          },
+                        ),
+                      ],
+                    ),
                   ),
+                  const SizedBox(height: 16),
+                  
+                  // AI Model Selection
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Model',
+                          style: TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String>(
+                          initialValue: _getModelsForProvider(_aiProvider).contains(_aiModel) ? _aiModel : _getModelsForProvider(_aiProvider).first,
+                          decoration: const InputDecoration(
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                          items: _getModelsForProvider(_aiProvider)
+                              .map((model) => DropdownMenuItem(value: model, child: Text(model)))
+                              .toList(),
+                          onChanged: (value) {
+                            if (value != null) {
+                              _setAiModel(value);
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Popular models are pre-selected. You can edit or change as needed.',
+                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // API Key Configuration
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${_getProviderDisplayName(_aiProvider)} API Key',
+                          style: const TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _aiApiKeyController,
+                          decoration: InputDecoration(
+                            hintText: 'Enter your API key...',
+                            border: const OutlineInputBorder(),
+                            isDense: true,
+                            suffixIcon: IconButton(
+                              icon: const Icon(Icons.save, size: 20),
+                              onPressed: () {
+                                _setAiApiKey(_aiApiKeyController.text);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('API key saved')),
+                                );
+                              },
+                            ),
+                          ),
+                          obscureText: true,
+                          onChanged: (value) => _setAiApiKey(value),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Required for AI-powered image analysis. ${_getApiKeyHint(_aiProvider)}',
+                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                 ],
-              ),
+              ],
             ),
           ),
           const SizedBox(height: 20),
@@ -337,6 +584,93 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           const SizedBox(height: 20),
+          // ===================== ACCOUNT SECTION =====================
+          if (!_standaloneMode) ...[
+            const Text(
+              'Account',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            
+            // User email display
+            if (_userEmail != null)
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.person, color: Colors.blue),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Signed in as:',
+                            style: TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                          Text(
+                            _userEmail!,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 12),
+            
+            // Family Sharing Button
+            if (_userEmail != null && _userEmail != 'offline-user@local')
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const FamilySharingScreen()),
+                  );
+                },
+                icon: const Icon(Icons.people, color: Colors.white),
+                label: const Text('Family Sharing'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 48),
+                ),
+              ),
+            const SizedBox(height: 8),
+            
+            // Sign Out Button
+            ElevatedButton.icon(
+              onPressed: _userEmail == null ? null : () async {
+                try {
+                  await FirestoreSyncService.instance.signOut();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Signed out successfully')),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Sign-out failed: $e')),
+                    );
+                  }
+                }
+              },
+              icon: const Icon(Icons.logout),
+              label: Text(_userEmail == null ? 'Not Signed In' : 'Sign Out'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _userEmail == null ? Colors.grey : Colors.orange,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 48),
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
           // Debug run button removed
           ElevatedButton(
             onPressed: () {

@@ -198,7 +198,9 @@ Future<Map<String, int>> _computeTaskCounts(Map<String, dynamic> payload) async 
         },
         itemBuilder: (context, index) {
           final d = _dateForIndex(index);
-          final isSelected = d.year == _selectedDate.year && d.month == _selectedDate.month && d.day == _selectedDate.day;
+          // Calculate which page is currently centered based on controller position
+          final currentPage = _controller.hasClients ? _controller.page?.round() ?? _centerIndex : _centerIndex;
+          final isSelected = index == currentPage;
           final int taskCount = _taskCounts[_dateKey(d)] ?? 0;
           return GestureDetector(
             onTap: () {
@@ -288,8 +290,9 @@ class _DayCell extends StatelessWidget {
         alignment: Alignment.center,
         constraints: const BoxConstraints(maxHeight: 88),
         decoration: BoxDecoration(
-          color: selected ? Theme.of(context).colorScheme.primary : const Color(0xFFE3F2FD), // light blue for unselected
+          color: selected ? Colors.blue : Colors.grey.shade200, // Blue for selected, light grey for unselected
           borderRadius: BorderRadius.circular(8),
+          border: selected ? Border.all(color: Colors.blue.shade700, width: 2) : null,
         ),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         child: Column(

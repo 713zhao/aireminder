@@ -8,7 +8,6 @@ import '../services/settings_service.dart';
 import '../services/gemini_service.dart';
 import 'tasks_list.dart';
 import 'settings.dart';
-import 'family_sharing_screen.dart';
 import '../widgets/task_form.dart';
 import '../widgets/date_strip.dart';
 import '../widgets/ad_bar.dart';
@@ -26,6 +25,8 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _userEmail;
   StreamSubscription<String?>? _userSub;
   bool _standaloneMode = true;
+  bool _attemptedAutoLogin = false; // ensure single auto-login attempt
+  Key _dateStripKey = UniqueKey();
 
   void _onDateSelected(DateTime d) {
     setState(() => _selectedDate = d);
@@ -502,6 +503,7 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     });
     // No automatic sign-in or dev auto-run: user must press the login button to sign in.
+    _tryAutoLogin();
   }
 
   @override
@@ -517,51 +519,47 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('AI Reminder'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.calendar_today),
+            tooltip: 'Select Date',
+            onPressed: () async {
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: _selectedDate,
+                firstDate: DateTime(2020),
+                lastDate: DateTime(2030),
+              );
+              if (picked != null) {
+                setState(() {
+                  _selectedDate = picked;
+                  _dateStripKey = UniqueKey(); // Force DateStrip to rebuild with new date
+                });
+              }
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.list),
             onPressed: () {
               Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TasksListScreen()));
             },
           ),
-          // Hide user email and login button in standalone mode
+          // Show user info and login button in non-standalone mode
           if (!_standaloneMode) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8.0),
-              child: Center(
-                child: Text(
-                  _userEmail ?? 'Not signed in',
-                  style: const TextStyle(fontSize: 12),
+            if (_userEmail != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                child: Center(
+                  child: Text(
+                    _userEmail!,
+                    style: const TextStyle(fontSize: 12),
+                  ),
                 ),
               ),
-            ),
-            
-            // Family sharing button (only show when signed in)
-            if (_userEmail != null && _userEmail != 'offline-user@local')
+            if (_userEmail == null)
               IconButton(
-                icon: const Icon(Icons.people),
-                tooltip: 'Family Sharing',
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const FamilySharingScreen()),
-                  );
-                },
+                icon: const Icon(Icons.login),
+                tooltip: 'Sign in to sync',
+                onPressed: () => _showLoginOptions(context),
               ),
-
-            IconButton(
-              icon: Icon(_userEmail == null ? Icons.login : Icons.logout),
-              tooltip: _userEmail == null ? 'Sign in to sync' : 'Sign out',
-              onPressed: () async {
-                if (_userEmail == null) {
-                  _showLoginOptions(context);
-                } else {
-                  try {
-                    await FirestoreSyncService.instance.signOut();
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Signed out')));
-                  } catch (e) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sign-out failed')));
-                  }
-                }
-              },
-            ),
           ],
           // Dev controls moved to Settings (one-tap Run dev sync and hidden dev menu).
           IconButton(
@@ -584,7 +582,11 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: Column(children: [
         const AdBar(),
-        DateStrip(initialDate: DateTime.now(), onDateSelected: _onDateSelected),
+        DateStrip(
+          key: _dateStripKey,
+          initialDate: _selectedDate,
+          onDateSelected: _onDateSelected,
+        ),
         Expanded(child: TasksForDate(date: _selectedDate)),
       ]),
       floatingActionButton: FloatingActionButton(
@@ -768,12 +770,35 @@ class _HomeScreenState extends State<HomeScreen> {
     final emailController = TextEditingController();
     final passwordController = TextEditingController();
     bool isCreatingAccount = false;
+    bool autoFilledPassword = false;
+    
+    // Restore previous email if available
+    final lastEmail = SettingsService.lastLoginEmail;
+    if (lastEmail.isNotEmpty) {
+      emailController.text = lastEmail;
+      final stored = SettingsService.getStoredPassword(lastEmail);
+      if (stored.isNotEmpty) {
+        passwordController.text = stored;
+        autoFilledPassword = true;
+      }
+    }
     
     showDialog(
       context: context,
       builder: (BuildContext dialogContext) {
         return StatefulBuilder(
           builder: (context, setState) {
+            void _onEmailChanged() {
+              final email = emailController.text.trim();
+              final stored = SettingsService.getStoredPassword(email);
+              if (stored.isNotEmpty && passwordController.text != stored) {
+                passwordController.text = stored;
+                autoFilledPassword = true;
+                setState(() {});
+              }
+            }
+            emailController.removeListener(_onEmailChanged); // prevent multiple adds
+            emailController.addListener(_onEmailChanged);
             return AlertDialog(
               title: Text(isCreatingAccount ? 'Create Account' : 'Sign In with Email'),
               content: Column(
@@ -781,10 +806,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   TextField(
                     controller: emailController,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Email',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.email),
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.email),
+                      helperText: emailController.text.isNotEmpty
+                          ? (autoFilledPassword ? 'Credentials restored' : 'Previous email restored')
+                          : null,
+                      helperStyle: TextStyle(
+                        color: Colors.green[600],
+                        fontSize: 11,
+                      ),
                     ),
                     keyboardType: TextInputType.emailAddress,
                   ),
@@ -852,6 +884,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         : await FirestoreSyncService.instance.signInWithEmail(email, password);
                       
                       if (mounted && res != null) {
+                        // Save the email for future logins
+                        SettingsService.setLastLoginEmail(email);
+                        SettingsService.saveCredential(email, password);
+                        
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text('✅ ${isCreatingAccount ? "Account created" : "Signed in"} as: ${res['email']}'),
@@ -896,6 +932,30 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       },
     );
+  }
+
+  Future<void> _tryAutoLogin() async {
+    // Only attempt once, skip if standalone, already signed in, or no stored creds
+    if (_attemptedAutoLogin) return;
+    _attemptedAutoLogin = true;
+    if (_standaloneMode) return;
+    if (_userEmail != null) return; // already signed in
+    final email = SettingsService.lastLoginEmail;
+    if (email.isEmpty) return;
+    final password = SettingsService.getStoredPassword(email);
+    if (password.isEmpty) return;
+    try {
+      await FirestoreSyncService.instance.init();
+      final res = await FirestoreSyncService.instance.signInWithEmail(email, password);
+      if (mounted && res != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Auto-signed in as $email')),
+        );
+      }
+    } catch (e) {
+      // Silent fail; user can sign in manually
+      debugPrint('Auto login failed: $e');
+    }
   }
 
   // Removed manual sync choice dialog — sign-in automatically fetches server data.
