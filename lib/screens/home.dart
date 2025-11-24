@@ -460,7 +460,7 @@ class _HomeScreenState extends State<HomeScreen> {
     
     // Show success message if task was saved
     if (result == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
         const SnackBar(content: Text('Task created from image')),
       );
     }
@@ -593,7 +593,9 @@ class _HomeScreenState extends State<HomeScreen> {
         onPressed: () async {
           final res = await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TaskForm()));
           if (res == true) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Task created')));
+            if (mounted) {
+              ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(content: Text('Task created')));
+            }
           }
         },
         child: const Icon(Icons.add),
@@ -861,14 +863,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     final password = passwordController.text;
                     
                     if (email.isEmpty || password.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
                         const SnackBar(content: Text('Please fill in all fields')),
                       );
                       return;
                     }
                     
                     if (password.length < 6) {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
                         const SnackBar(content: Text('Password must be at least 6 characters')),
                       );
                       return;
@@ -915,7 +917,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         errorMsg = 'Network error. Check your internet connection.';
                       }
                       
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
                         SnackBar(
                           content: Text(errorMsg),
                           backgroundColor: Colors.red,

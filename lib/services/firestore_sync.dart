@@ -300,7 +300,7 @@ class FirestoreSyncService {
             final ts = b.get('backup_last_updated') as String?;
             final ctx = navigatorKey.currentContext;
             if (ctx != null) {
-              ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Restored local backup (${ts ?? 'unknown time'})')));
+              ScaffoldMessenger.maybeOf(ctx)?.showSnackBar(SnackBar(content: Text('Restored local backup (${ts ?? 'unknown time'})')));
             }
           } catch (_) {}
         }
@@ -321,7 +321,7 @@ class FirestoreSyncService {
           final ts = b.get('backup_last_updated') as String?;
           final ctx = navigatorKey.currentContext;
           if (ctx != null) {
-            ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Restored local backup (${ts ?? 'unknown time'})')));
+            ScaffoldMessenger.maybeOf(ctx)?.showSnackBar(SnackBar(content: Text('Restored local backup (${ts ?? 'unknown time'})')));
           }
         } catch (_) {}
       } catch (_) {}
@@ -793,12 +793,12 @@ class FirestoreSyncService {
     try {
       final repo = HiveTaskRepository();
       unawaited(repo.restoreFromBackup());
-      try {
+        try {
         final b = Hive.box('tasks_backup_box');
         final ts = b.get('backup_last_updated') as String?;
         final ctx = navigatorKey.currentContext;
         if (ctx != null) {
-          ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Restored local backup (${ts ?? 'unknown time'})')));
+          ScaffoldMessenger.maybeOf(ctx)?.showSnackBar(SnackBar(content: Text('Restored local backup (${ts ?? 'unknown time'})')));
         }
       } catch (_) {}
     } catch (_) {}

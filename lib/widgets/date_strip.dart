@@ -18,21 +18,44 @@ class DateStrip extends StatefulWidget {
 
 class _DateStripState extends State<DateStrip> {
   late final PageController _controller;
-  static const int _centerIndex = 10000; // large center so user can scroll many days
-  static const double _viewportFraction = 0.32;
+  static const int _centerIndex = 1000; // reasonable center value that avoids precision errors
   late DateTime _selectedDate;
+  late DateTime _anchorDate; // the date that corresponds to _centerIndex
   final Map<String, int> _taskCounts = {};
   StreamSubscription? _taskSub;
   Timer? _settleTimer;
+  Timer? _programmaticSettleTimer;
   bool _isUserInteracting = false;
   bool _pendingTaskCountsReload = false;
+  bool _isProgrammaticScroll = false;
+  bool _expectingParentUpdate = false;
+  late int _lastHighlightedIndex;
+  late VoidCallback _controllerListener;
   static const Duration _settleDuration = Duration(milliseconds: 300);
 
   @override
   void initState() {
     super.initState();
     _selectedDate = widget.initialDate;
-  _controller = PageController(viewportFraction: _viewportFraction, initialPage: _centerIndex);
+    _anchorDate = widget.initialDate;
+  _controller = PageController(initialPage: _centerIndex);
+    _lastHighlightedIndex = _centerIndex;
+    _controllerListener = () {
+      if (!_controller.hasClients) return;
+      final p = _controller.page;
+      if (p == null) return;
+      final int highlighted = p.round();
+      if (highlighted != _lastHighlightedIndex) {
+        _lastHighlightedIndex = highlighted;
+        final date = _dateForIndex(highlighted);
+        // Only update UI highlight, don't notify parent here; parent is
+        // notified after settle timers in onPageChanged/ScrollEnd.
+        if (date.year != _selectedDate.year || date.month != _selectedDate.month || date.day != _selectedDate.day) {
+          setState(() => _selectedDate = date);
+        }
+      }
+    };
+    _controller.addListener(_controllerListener);
       // file updated: month+date on same row, larger fonts
     WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.onDateSelected(_selectedDate);
@@ -162,54 +185,163 @@ Future<Map<String, int>> _computeTaskCounts(Map<String, dynamic> payload) async 
 
   DateTime _dateForIndex(int index) {
     final offset = index - _centerIndex;
-    return widget.initialDate.add(Duration(days: offset));
+    final date = _anchorDate.add(Duration(days: offset));
+    // Normalize to midnight to avoid DST issues
+    return DateTime(date.year, date.month, date.day);
   }
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       height: 96,
-      child: PageView.builder(
-        controller: _controller,
-        scrollDirection: Axis.horizontal,
-        physics: VelocityPageScrollPhysics(parent: const BouncingScrollPhysics(), viewportFraction: _viewportFraction),
-        allowImplicitScrolling: true,
-        onPageChanged: (index) {
-          final date = _dateForIndex(index);
-          // Update selection UI immediately, but delay expensive work and
-          // notifying the parent until sliding/animation settles.
-          setState(() => _selectedDate = date);
-          _isUserInteracting = true;
-          _settleTimer?.cancel();
-          _settleTimer = Timer(_settleDuration, () async {
-            _isUserInteracting = false;
-            // Notify parent that date selection is final
-            widget.onDateSelected(_selectedDate);
-            // Perform task count refresh after settle. If a repo change
-            // happened while interacting, ensure we reload now.
-            if (_pendingTaskCountsReload) {
-              _pendingTaskCountsReload = false;
-              await _loadTaskCounts();
-            } else {
-              // Optionally refresh counts for smoother consistency.
-              await _loadTaskCounts();
+      child: NotificationListener<ScrollNotification>(
+        onNotification: (ScrollNotification notification) {
+          if (notification is ScrollEndNotification) {
+            // When scrolling ends, determine which page is centered
+            if (_controller.hasClients && _controller.page != null) {
+              final int centeredPage = _controller.page!.round();
+              final date = _dateForIndex(centeredPage);
+              if (date.year != _selectedDate.year || 
+                  date.month != _selectedDate.month || 
+                  date.day != _selectedDate.day) {
+                // Update local selection only. Defer notifying parent until
+                // onPageChanged's settle timer runs to avoid parent rebuilding
+                // with a different initialDate mid-navigation.
+                setState(() => _selectedDate = date);
+                _pendingTaskCountsReload = true;
+              }
             }
-          });
+          }
+          return false;
         },
-        itemBuilder: (context, index) {
-          final d = _dateForIndex(index);
-          // Calculate which page is currently centered based on controller position
-          final currentPage = _controller.hasClients ? _controller.page?.round() ?? _centerIndex : _centerIndex;
-          final isSelected = index == currentPage;
-          final int taskCount = _taskCounts[_dateKey(d)] ?? 0;
-          return GestureDetector(
-            onTap: () {
-              // animate to tapped page
-              _controller.animateToPage(index, duration: const Duration(milliseconds: 250), curve: Curves.easeInOut);
-            },
-            child: _DayCell(date: d, selected: isSelected, taskCount: taskCount),
-          );
-        },
+        child: Stack(
+          children: [
+            PageView.builder(
+              controller: _controller,
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              allowImplicitScrolling: true,
+              onPageChanged: (index) {
+                final date = _dateForIndex(index);
+                
+                // Update selection UI immediately
+                setState(() => _selectedDate = date);
+
+                if (_isProgrammaticScroll) {
+                  // Programmatic navigation: clear flag and use a separate
+                  // debounce timer so rapid programmatic taps are coalesced
+                  // and we notify the parent only once after the sequence
+                  // finishes.
+                  _isProgrammaticScroll = false;
+                  _programmaticSettleTimer?.cancel();
+                  _programmaticSettleTimer = Timer(_settleDuration, () async {
+                    // Notify parent once programmatic navigation has settled
+                    _expectingParentUpdate = true;
+                    widget.onDateSelected(_selectedDate);
+                    if (_pendingTaskCountsReload) {
+                      _pendingTaskCountsReload = false;
+                      await _loadTaskCounts();
+                    } else {
+                      await _loadTaskCounts();
+                    }
+                  });
+                } else {
+                  // User interaction: treat as before
+                  _isUserInteracting = true;
+                  _settleTimer?.cancel();
+                  _settleTimer = Timer(_settleDuration, () async {
+                    _isUserInteracting = false;
+                    // Notify parent that date selection is final
+                    _expectingParentUpdate = true;
+                    widget.onDateSelected(_selectedDate);
+                    // Perform task count refresh after settle
+                    if (_pendingTaskCountsReload) {
+                      _pendingTaskCountsReload = false;
+                      await _loadTaskCounts();
+                    } else {
+                      await _loadTaskCounts();
+                    }
+                  });
+                }
+              },
+              itemBuilder: (context, index) {
+                // Each page represents a single center date, but visually
+                // show the previous and next dates to the left and right.
+                final centerDate = _dateForIndex(index);
+                final prevDate = centerDate.subtract(const Duration(days: 1));
+                final nextDate = centerDate.add(const Duration(days: 1));
+                final isSelected = centerDate.year == _selectedDate.year && centerDate.month == _selectedDate.month && centerDate.day == _selectedDate.day;
+
+                return Row(
+                  children: [
+                    // Previous date (left)
+                    Expanded(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          final currentPage = _controller.hasClients && _controller.page != null ? _controller.page!.round() : index;
+                          final targetPage = currentPage - 1;
+                          
+                          _isProgrammaticScroll = true;
+                          _controller.animateToPage(
+                            targetPage,
+                            duration: const Duration(milliseconds: 220),
+                            curve: Curves.easeOut,
+                          );
+                          // Update local selected date optimistically; defer
+                          // notifying parent until settle timer.
+                          final newDate = _dateForIndex(targetPage);
+                          setState(() => _selectedDate = newDate);
+                          _pendingTaskCountsReload = true;
+                        },
+                        child: _DayCell(
+                          date: prevDate,
+                          selected: false,
+                          taskCount: _taskCounts[_dateKey(prevDate)] ?? 0,
+                        ),
+                      ),
+                    ),
+
+                    // Center date (highlighted)
+                    Expanded(
+                      child: _DayCell(
+                        date: centerDate,
+                        selected: isSelected,
+                        taskCount: _taskCounts[_dateKey(centerDate)] ?? 0,
+                      ),
+                    ),
+
+                    // Next date (right)
+                    Expanded(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          final currentPage = _controller.hasClients && _controller.page != null ? _controller.page!.round() : index;
+                          final targetPage = currentPage + 1;
+                          
+                          _isProgrammaticScroll = true;
+                          _controller.animateToPage(
+                            targetPage,
+                            duration: const Duration(milliseconds: 220),
+                            curve: Curves.easeOut,
+                          );
+                          final newDate = _dateForIndex(targetPage);
+                          setState(() => _selectedDate = newDate);
+                          _pendingTaskCountsReload = true;
+                        },
+                        child: _DayCell(
+                          date: nextDate,
+                          selected: false,
+                          taskCount: _taskCounts[_dateKey(nextDate)] ?? 0,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -217,58 +349,42 @@ Future<Map<String, int>> _computeTaskCounts(Map<String, dynamic> payload) async 
   @override
   void dispose() {
     _taskSub?.cancel();
+    _controller.removeListener(_controllerListener);
     _controller.dispose();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant DateStrip oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // If the parent changed the initialDate (for example after
+    // a notification), re-align the controller so the page indices map
+    // consistently to dates. This prevents index->date drift when the
+    // parent updates the date while the PageView is still using the old
+    // initialDate mapping.
+    bool isSameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
+    if (!isSameDay(oldWidget.initialDate, widget.initialDate)) {
+      // If we expected the parent to update (because we just notified it),
+      // and the new initialDate matches our current selection, consume
+      // the update silently to avoid re-centering mid-navigation.
+      if (_expectingParentUpdate && isSameDay(widget.initialDate, _selectedDate)) {
+        _expectingParentUpdate = false;
+        return;
+      }
+
+      _selectedDate = widget.initialDate;
+      _anchorDate = widget.initialDate;
+      // Move the controller back to center so _dateForIndex keeps mapping
+      // index == _centerIndex -> widget.initialDate.
+      if (_controller.hasClients) {
+        _isProgrammaticScroll = true;
+        _controller.jumpToPage(_centerIndex);
+      }
+    }
   }
 }
 
 /// ScrollPhysics that interprets fling velocity to move multiple pages in a PageView.
-class VelocityPageScrollPhysics extends PageScrollPhysics {
-  final double viewportFraction;
-
-  const VelocityPageScrollPhysics({ScrollPhysics? parent, required this.viewportFraction}) : super(parent: parent);
-
-  @override
-  VelocityPageScrollPhysics applyTo(ScrollPhysics? ancestor) {
-    return VelocityPageScrollPhysics(parent: buildParent(ancestor), viewportFraction: viewportFraction);
-  }
-
-  @override
-  Simulation? createBallisticSimulation(ScrollMetrics position, double velocity) {
-    // If we're out of range or velocity is small, fall back to default behavior.
-    if (position.outOfRange || velocity.abs() < 200.0) {
-      return super.createBallisticSimulation(position, velocity);
-    }
-
-  final Tolerance tolerance = toleranceFor(position);
-
-    // Compute logical page size and current page index.
-    final double pageDimension = position.viewportDimension * viewportFraction;
-    if (pageDimension <= 0) return super.createBallisticSimulation(position, velocity);
-    final double currentPage = position.pixels / pageDimension;
-
-    // Determine how many pages to move based on fling velocity.
-    final int additional = (velocity.abs() / 1200).ceil(); // tune this factor if needed
-    int targetPage = currentPage.round();
-    if (velocity < 0) {
-      // negative velocity: user swiped left -> move forward (increase index)
-      targetPage += additional;
-    } else {
-      // positive velocity: swipe right -> move backward
-      targetPage -= additional;
-    }
-
-    final double targetPixels = (targetPage * pageDimension).clamp(position.minScrollExtent, position.maxScrollExtent).toDouble();
-
-    return ScrollSpringSimulation(
-      const SpringDescription(mass: 80, stiffness: 100, damping: 1),
-      position.pixels,
-      targetPixels,
-      velocity,
-      tolerance: tolerance,
-    );
-  }
-}
 
 class _DayCell extends StatelessWidget {
   final DateTime date;

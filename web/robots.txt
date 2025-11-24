@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Allow: /privacy-policy.html
+Allow: /terms.html
+Allow: /about.html
+Allow: /contact.html
+
+Sitemap: https://aireminder.pages.dev/sitemap.xml

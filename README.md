@@ -154,6 +154,19 @@ Build the APK
     - Camera and voice features will gracefully disable on devices lacking hardware
     - App now installable on 99%+ of Android devices running Android 7.0+
 
+    💰 Google AdSense Integration (2025-11-23):
+    - Added Google AdSense for web application monetization
+    - Created required policy pages:
+      * Privacy Policy (web/privacy-policy.html)
+      * Terms of Service (web/terms.html)
+      * About Page (web/about.html)
+      * Contact Page (web/contact.html)
+    - AdSense script added to web/index.html
+    - ⚠️ IMPORTANT: Replace "ca-pub-XXXXXXXXXXXXXXXX" with your actual AdSense publisher ID in web/index.html
+    - Policy pages are accessible at: /privacy-policy.html, /terms.html, /about.html, /contact.html
+    - All pages include cross-linking for easy navigation
+    - Required for AdSense approval and compliance
+
     🔐 Authentication Fix for E-Readers (2025-10-28):
     - Fixed automatic anonymous login issue on Boox and other e-reader devices
     - Added proper login dialog with 3 clear options: Google Account, Anonymous, or Offline
