@@ -457,7 +457,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                         const SizedBox(height: 8),
                         DropdownButtonFormField<String>(
-                          initialValue: _aiProvider,
+                          value: _aiProvider,
                           decoration: const InputDecoration(
                             border: OutlineInputBorder(),
                             isDense: true,
@@ -491,7 +491,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                         const SizedBox(height: 8),
                         DropdownButtonFormField<String>(
-                          initialValue: _getModelsForProvider(_aiProvider).contains(_aiModel) ? _aiModel : _getModelsForProvider(_aiProvider).first,
+                          value: _getModelsForProvider(_aiProvider).contains(_aiModel) ? _aiModel : _getModelsForProvider(_aiProvider).first,
                           decoration: const InputDecoration(
                             border: OutlineInputBorder(),
                             isDense: true,

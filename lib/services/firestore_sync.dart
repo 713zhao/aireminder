@@ -154,10 +154,9 @@ class FirestoreSyncService {
             print('[FirestoreSync] signed-in uid: ${u.uid}');
           } catch (_) {}
           _startListening(u.uid);
-        // After sign-in, always pull the canonical copy from the server and overwrite local storage.
+        // Push any pending local changes to server before syncing from remote
         try {
-          // Replace local data with server data in background
-          unawaited(overwriteLocalWithRemote());
+          unawaited(_syncOnSignIn());
         } catch (_) {}
       }
     });
@@ -558,6 +557,82 @@ class FirestoreSyncService {
       _suspendLocalPush = false;
     }
     _statusController.add('synced-from-server');
+  }
+
+  /// Sync local changes with server on sign-in.
+  /// This method pushes any local changes to the server first, then performs a merge with remote data.
+  Future<void> _syncOnSignIn() async {
+    if (!_initialized || _auth?.currentUser == null) return;
+    
+    print('[FirestoreSync] Starting sign-in sync...');
+    
+    try {
+      final box = Hive.box('tasks_box');
+      final currentUserEmail = _auth?.currentUser?.email;
+      
+      // Step 1: Fetch remote tasks
+      final remoteTasks = await fetchAllUserTasks();
+      final remoteTasksMap = {for (var t in remoteTasks) t.id: t};
+      
+      // Step 2: Process local tasks - push updates if newer than remote
+      _suspendLocalPush = true;
+      try {
+        for (final val in box.values) {
+          try {
+            final Map<String, dynamic> j = jsonDecode(val as String);
+            final localTask = Task.fromJson(j);
+            
+            // Check if this is a task owned by current user or a local-only task
+            final isOwnedByCurrentUser = localTask.ownerId == null || localTask.ownerId == currentUserEmail;
+            
+            if (isOwnedByCurrentUser) {
+              final remoteTask = remoteTasksMap[localTask.id];
+              
+              if (remoteTask == null) {
+                // Local task doesn't exist on server - push it
+                print('[FirestoreSync] Pushing new local task to server: ${localTask.id}');
+                await pushTask(localTask);
+              } else {
+                // Task exists on both - compare versions/timestamps
+                final localUpdated = localTask.updatedAt ?? localTask.createdAt;
+                final remoteUpdated = remoteTask.updatedAt ?? remoteTask.createdAt;
+                
+                if (localUpdated.isAfter(remoteUpdated)) {
+                  // Local is newer - push to server
+                  print('[FirestoreSync] Pushing updated local task to server: ${localTask.id}');
+                  await pushTask(localTask);
+                } else {
+                  print('[FirestoreSync] Remote task is newer or same: ${localTask.id}');
+                }
+              }
+            }
+          } catch (e) {
+            print('[FirestoreSync] Error processing local task during sync: $e');
+          }
+        }
+      } finally {
+        _suspendLocalPush = false;
+      }
+      
+      // Step 3: Fetch updated remote data and merge with local
+      final updatedRemoteTasks = await fetchAllUserTasks();
+      _suspendLocalPush = true;
+      try {
+        for (final remoteTask in updatedRemoteTasks) {
+          // Upsert remote tasks into local storage
+          await box.put(remoteTask.id, jsonEncode(remoteTask.toJson()));
+        }
+      } finally {
+        _suspendLocalPush = false;
+      }
+      
+      _statusController.add('synced');
+      print('[FirestoreSync] Sign-in sync completed successfully');
+      
+    } catch (e) {
+      print('[FirestoreSync] Error during sign-in sync: $e');
+      _statusController.add('sync-error');
+    }
   }
 
   /// Push all local tasks to Firestore (overwrites remote documents by id).
