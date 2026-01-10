@@ -8,6 +8,7 @@ import '../services/settings_service.dart';
 import '../services/gemini_service.dart';
 import 'tasks_list.dart';
 import 'settings.dart';
+import 'weekly_view.dart';
 import '../widgets/task_form.dart';
 import '../widgets/date_strip.dart';
 import '../widgets/ad_bar.dart';
@@ -538,8 +539,16 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.list),
+            tooltip: 'All Tasks',
             onPressed: () {
               Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TasksListScreen()));
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.calendar_view_week),
+            tooltip: 'Weekly View',
+            onPressed: () {
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WeeklyViewScreen()));
             },
           ),
           // Show user info and login button in non-standalone mode
