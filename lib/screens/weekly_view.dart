@@ -290,13 +290,39 @@ class _WeeklyViewScreenState extends State<WeeklyViewScreen> {
             ),
             child: Column(
               children: [
-                Text(
-                  DateFormat('E').format(day),
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: isToday ? Colors.white : Colors.black87,
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      DateFormat('E').format(day),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: isToday ? Colors.white : Colors.black87,
+                      ),
+                    ),
+                    if (tasks.isNotEmpty) ...[
+                      const SizedBox(width: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: isToday ? Colors.white70 : Colors.redAccent,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        constraints: const BoxConstraints(minWidth: 18, minHeight: 14),
+                        child: Center(
+                          child: Text(
+                            tasks.length > 9 ? '9+' : tasks.length.toString(),
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: isToday ? Colors.black87 : Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -380,23 +406,25 @@ class _WeeklyViewScreenState extends State<WeeklyViewScreen> {
                   ),
                 ),
                 const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: isToday
-                        ? Colors.white.withOpacity(0.3)
-                        : Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '${tasks.length}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: isToday ? Colors.white : Colors.blue.shade700,
+                if (tasks.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: isToday ? Colors.white70 : Colors.redAccent,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    constraints: const BoxConstraints(minWidth: 24, minHeight: 16),
+                    child: Center(
+                      child: Text(
+                        tasks.length > 9 ? '9+' : tasks.length.toString(),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isToday ? Colors.black87 : Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ),
-                ),
               ],
             ),
           ),
