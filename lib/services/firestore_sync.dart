@@ -735,7 +735,6 @@ class FirestoreSyncService {
 
   StreamSubscription? _remoteSub;
   StreamSubscription? _sharedSub;
-  StreamSubscription? _allSharedTasksSub;
 
   /// Restart sync listeners (useful when settings change)
   void restartSyncListeners() {
@@ -750,7 +749,6 @@ class FirestoreSyncService {
   void _startListening(String uid) {
     _remoteSub?.cancel();
     _sharedSub?.cancel();
-    _allSharedTasksSub?.cancel();
     final box = Hive.box('tasks_box');
     
     // Listen to user's own tasks
@@ -765,65 +763,8 @@ class FirestoreSyncService {
       _handleListenError(e);
     });
     
-    // ALSO listen to shared_tasks collection for all tasks owned by this user
-    // This ensures tasks pushed to shared_tasks are synced back (important for web)
-    final userEmail = _auth!.currentUser!.email;
-    if (userEmail != null) {
-      print('[FirestoreSync] Setting up listener for owned tasks in shared_tasks collection');
-      _allSharedTasksSub = _fs!
-          .collection('shared_tasks')
-          .where('ownerId', isEqualTo: userEmail)
-          .snapshots()
-          .listen((snap) async {
-        // Process owned tasks from shared_tasks (for web compatibility)
-        // Only process added/modified changes, skip initial load
-        final hasChanges = snap.docChanges.isNotEmpty;
-        if (!hasChanges && snap.docs.isNotEmpty) {
-          print('[FirestoreSync] shared_tasks (owned): Skipping initial snapshot (${snap.docs.length} docs)');
-          return;
-        }
-        
-        _suspendLocalPush = true;
-        _lastSuspensionTime = DateTime.now();
-        try {
-          for (final change in snap.docChanges) {
-            try {
-              final doc = change.doc;
-              final Map<String, dynamic> data = Map<String, dynamic>.from(doc.data() as Map? ?? {});
-              data['id'] = data['id'] ?? doc.id;
-              final task = Task.fromJson(data);
-              
-              // Skip if this is a shared task (will be handled by sharing_index listener)
-              if (task.isShared && task.ownerId != userEmail) {
-                continue;
-              }
-              
-              final existingVal = box.get(task.id) as String?;
-              final newJson = jsonEncode(task.toJson());
-              
-              if (task.deleted) {
-                await box.delete(task.id);
-                print('[FirestoreSync] Removed owned task from shared_tasks: ${task.id}');
-              } else if (existingVal != newJson) {
-                await box.put(task.id, newJson);
-                print('[FirestoreSync] Synced owned task from shared_tasks: ${task.id}');
-              }
-            } catch (e) {
-              print('[FirestoreSync] Error processing shared_tasks owned change: $e');
-            }
-          }
-        } finally {
-          Future.delayed(const Duration(milliseconds: 2000), () {
-            _suspendLocalPush = false;
-            _lastSuspensionTime = null;
-            print('[FirestoreSync] Re-enabled local push after owned shared_tasks sync');
-          });
-        }
-      }, onError: (e) {
-        _handleListenError(e);
-      });
-    
     // Listen to shared tasks (tasks shared WITH the user)
+    final userEmail = _auth!.currentUser!.email;
     if (userEmail != null) {
       print('[FirestoreSync] Setting up shared task listener');
       _sharedSub = _fs!
