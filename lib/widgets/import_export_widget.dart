@@ -215,12 +215,40 @@ class _ImportExportWidgetState extends State<ImportExportWidget> {
 
   void _executeDownloadJs(String filename, String dataUrl) {
     try {
-      // Use the js package to execute the download code
+      // Use JavaScript to safely download the file
       _downloadViaJs(filename, dataUrl);
     } catch (e) {
       print('JS execution failed: $e');
-      rethrow;
+      // Try alternative method if primary fails
+      _downloadUsingAnchorElement(filename, dataUrl);
     }
+  }
+
+  void _downloadUsingAnchorElement(String filename, String dataUrl) {
+    // ignore: avoid_dynamic_calls
+    js_util.callMethod(js_util.globalThis, 'eval', [
+      '''
+      (function() {
+        try {
+          var link = document.createElement('a');
+          link.href = '$dataUrl';
+          link.download = '$filename';
+          if (document.body && typeof document.body.appendChild === 'function') {
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          } else {
+            console.log('document.body not available, using direct click');
+            link.click();
+          }
+        } catch (err) {
+          console.error('Anchor element download error: ' + err);
+          throw err;
+        }
+      })();
+      '''
+    ]);
   }
 
   void _downloadViaJs(String filename, String dataUrl) {
@@ -232,13 +260,23 @@ class _ImportExportWidgetState extends State<ImportExportWidget> {
       js_util.callMethod(js_util.globalThis, 'eval', [
         '''
         (function() {
-          var link = document.createElement('a');
-          link.href = '$dataUrl';
-          link.download = '$filename';
-          link.style.display = 'none';
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
+          try {
+            var link = document.createElement('a');
+            link.href = '$dataUrl';
+            link.download = '$filename';
+            link.style.display = 'none';
+            if (document.body && typeof document.body.appendChild === 'function') {
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+            } else {
+              console.log('document.body not available or appendChild not callable');
+              link.click();
+            }
+          } catch (err) {
+            console.error('Error in download function: ' + err);
+            throw err;
+          }
         })();
         '''
       ]);
@@ -404,16 +442,26 @@ class _ImportExportWidgetState extends State<ImportExportWidget> {
     }
     
     try {
-      // Create JavaScript code for CSV download
+      // Create JavaScript code for CSV download with safe DOM access
       final jsCode = '''
       (function() {
-        var link = document.createElement('a');
-        link.href = 'data:text/csv;base64,$base64Data';
-        link.download = '$filename';
-        link.style.display = 'none';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        try {
+          var link = document.createElement('a');
+          link.href = 'data:text/csv;base64,$base64Data';
+          link.download = '$filename';
+          link.style.display = 'none';
+          if (document.body && typeof document.body.appendChild === 'function') {
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          } else {
+            console.log('document.body not available or appendChild not callable');
+            link.click();
+          }
+        } catch (e) {
+          console.error('Download error: ' + e);
+          throw e;
+        }
       })();
       ''';
       
@@ -441,24 +489,227 @@ class _ImportExportWidgetState extends State<ImportExportWidget> {
     }
   }
 
+  Future<void> _downloadTemplate() async {
+    setState(() => _isLoading = true);
+    try {
+      final templateContent = _service.generateCsvTemplate();
+      
+      if (kIsWeb) {
+        // On web, show download dialog
+        final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-').split('.').first;
+        final filename = 'aireminder_template_$timestamp.csv';
+        
+        if (mounted) {
+          _showTemplateDownloadDialog(templateContent, filename);
+        }
+      } else {
+        // On native, use file picker
+        final filePath = await _service.exportTemplateToFile();
+        _showMessage('Template saved to: $filePath');
+      }
+    } catch (e) {
+      _showMessage('Template download failed: $e', isError: true);
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _showTemplateDownloadDialog(String csvContent, String filename) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Download CSV Template'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Use this template to create reminders in CSV format.'),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: SelectableText(
+                  filename,
+                  style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '📋 Preview:',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  border: Border.all(color: Colors.grey[300]!),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                constraints: const BoxConstraints(maxHeight: 150),
+                child: SingleChildScrollView(
+                  child: SelectableText(
+                    csvContent.length > 500
+                        ? '${csvContent.substring(0, 500)}...'
+                        : csvContent,
+                    style: const TextStyle(fontSize: 10, fontFamily: 'monospace'),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _triggerTemplateDownload(csvContent, filename);
+            },
+            icon: const Icon(Icons.download),
+            label: const Text('Download'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _triggerTemplateDownload(String content, String filename) async {
+    try {
+      if (kIsWeb) {
+        await _downloadTemplateOnWeb(content, filename);
+      } else {
+        await _downloadTemplateOnNative(content, filename);
+      }
+      _showMessage('✅ Template downloaded successfully!');
+    } catch (e) {
+      print('Template download error: $e');
+      _showMessage('Download failed: $e', isError: true);
+    }
+  }
+
+  Future<void> _downloadTemplateOnWeb(String content, String filename) async {
+    try {
+      final bytes = utf8.encode(content);
+      final base64Data = base64Encode(bytes);
+      
+      final jsCode = '''
+      (function() {
+        try {
+          var link = document.createElement('a');
+          link.href = 'data:text/csv;base64,$base64Data';
+          link.download = '$filename';
+          link.style.display = 'none';
+          
+          if (document.body && typeof document.body.appendChild === 'function') {
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          } else {
+            console.log('document.body not available or appendChild not callable, using direct click');
+            link.click();
+          }
+        } catch (err) {
+          console.error('Template download error:', err);
+          throw err;
+        }
+      })();
+      ''';
+      
+      // ignore: avoid_dynamic_calls
+      js_util.callMethod(js_util.globalThis, 'eval', [jsCode]);
+      
+      await Future.delayed(const Duration(milliseconds: 500));
+    } catch (e) {
+      print('Web template download failed: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> _downloadTemplateOnNative(String content, String filename) async {
+    try {
+      final result = await FilePicker.platform.saveFile(
+        fileName: filename,
+        type: FileType.custom,
+        allowedExtensions: ['csv'],
+        lockParentWindow: true,
+      );
+
+      if (result == null) {
+        throw 'Save cancelled by user';
+      }
+
+      final file = io.File(result);
+      await file.writeAsString(content);
+    } catch (e) {
+      print('Native template download failed: $e');
+      rethrow;
+    }
+  }
+
   Future<void> _importTasks() async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['json'],
-        dialogTitle: 'Select backup file to import',
+        allowedExtensions: ['json', 'csv'],
+        dialogTitle: 'Select backup file to import (JSON or CSV)',
       );
 
       if (result == null) return; // User cancelled
 
       setState(() => _isLoading = true);
 
-      final file = io.File(result.files.single.path!);
-      final importResult = await _service.importFromFile(file);
+      final fileExtension = result.files.single.extension?.toLowerCase();
+      
+      print('Importing file: ${result.files.single.name}, extension: $fileExtension');
+      
+      List<Task> importedTasks = [];
+      List<String> errors = [];
 
-      if (importResult.tasks.isEmpty) {
+      try {
+        // On web, use bytes. On native, use path.
+        String fileContent;
+        if (kIsWeb) {
+          final bytes = result.files.single.bytes;
+          if (bytes == null) {
+            throw 'Unable to read file bytes';
+          }
+          fileContent = utf8.decode(bytes);
+          print('Read file from bytes (web): ${bytes.length} bytes');
+        } else {
+          final file = io.File(result.files.single.path!);
+          fileContent = await file.readAsString();
+          print('Read file from path (native): ${fileContent.length} chars');
+        }
+
+        if (fileExtension == 'csv') {
+          // Handle CSV import
+          print('Parsing CSV file...');
+          importedTasks = _parseCsvTasks(fileContent);
+          print('CSV parsing result: ${importedTasks.length} tasks parsed');
+        } else {
+          // Handle JSON import
+          print('Parsing JSON file...');
+          final importResult = await _service.importFromJsonString(fileContent);
+          importedTasks = importResult.tasks;
+          errors = importResult.errors;
+          print('JSON parsing result: ${importedTasks.length} tasks parsed');
+        }
+      } catch (e) {
+        print('Parse error: $e');
+        errors.add('Parsing error: $e');
+      }
+
+      if (importedTasks.isEmpty) {
         _showMessage(
-          'No valid tasks found in file.\nErrors: ${importResult.errors.join(', ')}',
+          'No valid tasks found in file.\nErrors: ${errors.join(', ')}',
           isError: true,
         );
         return;
@@ -466,13 +717,134 @@ class _ImportExportWidgetState extends State<ImportExportWidget> {
 
       // Show import preview and ask for confirmation
       if (mounted) {
-        _showImportPreview(importResult.tasks, importResult.errors);
+        _showImportPreview(importedTasks, errors);
       }
     } catch (e) {
+      print('Import error: $e');
       _showMessage('Failed to select file: $e', isError: true);
     } finally {
       setState(() => _isLoading = false);
     }
+  }
+
+  List<Task> _parseCsvTasks(String csvContent) {
+    final List<Task> tasks = [];
+    final lines = csvContent.split('\n');
+    
+    print('CSV content length: ${csvContent.length}, lines: ${lines.length}');
+    if (lines.isEmpty) return tasks;
+
+    // Skip header and comments
+    for (var i = 1; i < lines.length; i++) {
+      final line = lines[i].trim();
+      if (line.isEmpty || line.startsWith('#')) {
+        print('Skipping line $i (empty or comment)');
+        continue;
+      }
+
+      try {
+        final values = _parseCsvLine(line);
+        if (values.length < 1) {
+          print('Line $i: Not enough values (${values.length})');
+          continue;
+        }
+
+        final title = values[0].trim();
+        if (title.isEmpty) {
+          print('Line $i: Empty title');
+          continue;
+        }
+
+        print('Processing line $i: title=$title, fields=${values.length}');
+
+        final notes = values.length > 1 ? values[1].trim() : null;
+        
+        // Parse dates with optional time (YYYY-MM-DD HH:mm, YYYY-MM-DDTHH:mm, or YYYY-MM-DD)
+        DateTime? parseDateTime(String? dateStr) {
+          if (dateStr == null || dateStr.isEmpty) return null;
+          try {
+            dateStr = dateStr.trim();
+            if (dateStr.isEmpty) return null;
+            
+            // Handle different date formats
+            if (dateStr.contains('T')) {
+              // ISO format with T
+              return DateTime.parse(dateStr);
+            } else if (dateStr.contains(' ')) {
+              // Date with space and time
+              dateStr = dateStr.replaceFirst(' ', 'T');
+              if (!dateStr.contains(':')) {
+                dateStr = '${dateStr}:00';
+              }
+              return DateTime.parse(dateStr);
+            } else if (dateStr.contains('-')) {
+              // Just date
+              return DateTime.parse('${dateStr}T00:00:00');
+            }
+            return null;
+          } catch (e) {
+            print('Date parse error for "$dateStr": $e');
+            return null;
+          }
+        }
+
+        final createdAt = parseDateTime(values.length > 2 ? values[2] : null) ?? DateTime.now();
+        final dueAt = parseDateTime(values.length > 3 ? values[3] : null);
+        final status = values.length > 4 ? values[4].trim().toLowerCase() : 'pending';
+        final completedAt = parseDateTime(values.length > 5 ? values[5] : null);
+        final recurrence = values.length > 6 ? values[6].trim() : null;
+        final remindMinutes = values.length > 7 ? int.tryParse(values[7].trim()) ?? 10 : 10;
+
+        final task = Task(
+          id: 'csv_${DateTime.now().millisecondsSinceEpoch}_${tasks.length}',
+          title: title,
+          notes: notes?.isEmpty ?? true ? null : notes,
+          createdAt: createdAt,
+          dueAt: dueAt,
+          recurrence: recurrence?.isEmpty ?? true ? null : recurrence,
+          isCompleted: status == 'completed',
+          completedAt: status == 'completed' ? completedAt : null,
+          remindBeforeMinutes: remindMinutes,
+        );
+
+        tasks.add(task);
+        print('✓ Parsed task: $title');
+      } catch (e) {
+        print('Error parsing CSV row $i: "$line" - $e');
+      }
+    }
+
+    print('✓ Total tasks parsed from CSV: ${tasks.length}');
+    return tasks;
+  }
+
+  List<String> _parseCsvLine(String line) {
+    final values = <String>[];
+    var current = StringBuffer();
+    var inQuotes = false;
+
+    for (int i = 0; i < line.length; i++) {
+      final char = line[i];
+      final nextChar = i + 1 < line.length ? line[i + 1] : null;
+
+      if (char == '"') {
+        if (inQuotes && nextChar == '"') {
+          // Escaped quote
+          current.write('"');
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char == ',' && !inQuotes) {
+        values.add(current.toString());
+        current = StringBuffer();
+      } else {
+        current.write(char);
+      }
+    }
+
+    values.add(current.toString());
+    return values;
   }
 
   void _showImportPreview(List<Task> tasks, List<String> errors) {
@@ -548,9 +920,9 @@ class _ImportExportWidgetState extends State<ImportExportWidget> {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () async {
+            onPressed: () {
               Navigator.pop(context);
-              await _confirmImport(tasks);
+              _showDuplicateHandlingDialog(tasks);
             },
             child: const Text('Import All'),
           ),
@@ -559,7 +931,7 @@ class _ImportExportWidgetState extends State<ImportExportWidget> {
     );
   }
 
-  Future<void> _confirmImport(List<Task> tasks) async {
+  void _showDuplicateHandlingDialog(List<Task> tasks) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -569,16 +941,16 @@ class _ImportExportWidgetState extends State<ImportExportWidget> {
         ),
         actions: [
           TextButton(
-            onPressed: () async {
+            onPressed: () {
               Navigator.pop(context);
-              await _performImport(tasks, 'skip');
+              _performImport(tasks, 'skip');
             },
             child: const Text('Keep Existing'),
           ),
           TextButton(
-            onPressed: () async {
+            onPressed: () {
               Navigator.pop(context);
-              await _performImport(tasks, 'replace');
+              _performImport(tasks, 'replace');
             },
             child: const Text('Replace'),
           ),
@@ -588,13 +960,17 @@ class _ImportExportWidgetState extends State<ImportExportWidget> {
   }
 
   Future<void> _performImport(List<Task> tasks, String duplicateHandling) async {
+    print('Starting import with $duplicateHandling strategy...');
     setState(() => _isLoading = true);
     try {
+      print('Calling mergeTasksIntoRepository with ${tasks.length} tasks');
       final result = await _service.mergeTasksIntoRepository(
         widget.repository,
         tasks,
         duplicateHandling: duplicateHandling,
       );
+      
+      print('✓ Import completed: ${result.imported} imported, ${result.skipped} skipped');
 
       _showMessage(
         'Imported ${result.imported} tasks! (${result.skipped} skipped)\n'
@@ -604,6 +980,7 @@ class _ImportExportWidgetState extends State<ImportExportWidget> {
       // Notify parent that tasks were imported
       widget.onTasksImported();
     } catch (e) {
+      print('✗ Import failed: $e');
       _showMessage('Import failed: $e', isError: true);
     } finally {
       setState(() => _isLoading = false);
@@ -717,6 +1094,25 @@ class _ImportExportWidgetState extends State<ImportExportWidget> {
                 Icon(Icons.table_chart),
                 SizedBox(width: 8),
                 Text('Export as CSV'),
+              ],
+            ),
+          ),
+        ),
+
+        // Download CSV Template Button
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: OutlinedButton(
+            onPressed: _isLoading ? null : _downloadTemplate,
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(44),
+            ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.description),
+                SizedBox(width: 8),
+                Text('Download CSV Template'),
               ],
             ),
           ),

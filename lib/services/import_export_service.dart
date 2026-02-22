@@ -279,8 +279,8 @@ class ImportExportService {
   String exportToCsvString(List<Task> tasks) {
     final buffer = StringBuffer();
     
-    // CSV Header
-    buffer.writeln('Title,Notes,Created Date,Due Date,Status,Completed Date,Recurrence,Reminder Time (min)');
+    // CSV Header with time information
+    buffer.writeln('Title,Notes,Created Date Time,Due Date Time,Status,Completed Date Time,Recurrence,Reminder Time (min)');
     
     // CSV Data rows
     for (final task in tasks) {
@@ -294,13 +294,22 @@ class ImportExportService {
         return escaped;
       };
 
+      // Format DateTime with time
+      final createdDateTime = task.createdAt.toIso8601String().replaceFirst('T', ' ').substring(0, 16);
+      final dueDateTime = task.dueAt != null 
+          ? task.dueAt!.toIso8601String().replaceFirst('T', ' ').substring(0, 16)
+          : '';
+      final completedDateTime = task.completedAt != null
+          ? task.completedAt!.toIso8601String().replaceFirst('T', ' ').substring(0, 16)
+          : '';
+
       buffer.writeln([
         escapeCsv(task.title),
         escapeCsv(task.notes),
-        task.createdAt.toIso8601String().split('T')[0],
-        task.dueAt?.toIso8601String().split('T')[0] ?? '',
+        createdDateTime,
+        dueDateTime,
         task.isCompleted ? 'Completed' : 'Pending',
-        task.completedAt?.toIso8601String().split('T')[0] ?? '',
+        completedDateTime,
         escapeCsv(task.recurrence),
         task.remindBeforeMinutes.toString(),
       ].join(','));
@@ -333,6 +342,64 @@ class ImportExportService {
       }
     } catch (e) {
       throw Exception('Failed to export to CSV: $e');
+    }
+  }
+
+  /// Generate a blank CSV template for creating new reminders
+  /// 
+  /// Returns a CSV string with headers and a few example rows
+  String generateCsvTemplate() {
+    final buffer = StringBuffer();
+    
+    // CSV Header with time information
+    buffer.writeln('Title,Notes,Created Date Time,Due Date Time,Status,Completed Date Time,Recurrence,Reminder Time (min)');
+    
+    // Instructions as comments
+    buffer.writeln('# Instructions:');
+    buffer.writeln('# - Title: Task name (required)');
+    buffer.writeln('# - Notes: Additional details');
+    buffer.writeln('# - Created Date Time: Start date and time (YYYY-MM-DD HH:mm or just YYYY-MM-DD)');
+    buffer.writeln('# - Due Date Time: When task is due (YYYY-MM-DD HH:mm or just YYYY-MM-DD)');
+    buffer.writeln('# - Status: "Pending" or "Completed"');
+    buffer.writeln('# - Completed Date Time: When completed (YYYY-MM-DD HH:mm or just YYYY-MM-DD)');
+    buffer.writeln('# - Recurrence: "daily", "weekly", "monthly", "yearly" or leave blank');
+    buffer.writeln('# - Reminder Time (min): Minutes before due date to remind (e.g., 15=15 min before)');
+    buffer.writeln('');
+    
+    // Example rows with time information
+    buffer.writeln('Buy groceries,Milk and eggs needed,2026-02-22 09:00,2026-02-23 18:00,Pending,,weekly,15');
+    buffer.writeln('Team meeting,Quarterly review,2026-02-22 10:00,2026-02-24 14:30,Pending,,monthly,30');
+    buffer.writeln('Fix bug #123,Login page issue,2026-02-22 08:30,2026-02-25 17:00,Pending,,daily,10');
+    buffer.writeln('Call doctor,Annual checkup,2026-02-15 09:00,2026-02-28 15:00,Completed,2026-02-20 15:30,,');
+    buffer.writeln('Pay rent,Monthly rent payment,2026-02-22,2026-03-01 23:59,Pending,,monthly,1440');
+    
+    return buffer.toString();
+  }
+
+  /// Export template to a file in the app's documents directory
+  /// 
+  /// On native platforms: saves to documents directory and returns file path
+  /// On web: updates _lastExportedCsv for UI handling
+  Future<String> exportTemplateToFile() async {
+    try {
+      final csvString = generateCsvTemplate();
+      final String timestamp = DateTime.now().toIso8601String().replaceAll(':', '-').split('.').first;
+      final String filename = 'aireminder_template_$timestamp.csv';
+      
+      if (kIsWeb) {
+        // Web: Store for widget to handle download
+        lastExportedCsv = csvString;
+        lastExportFileName = filename;
+        return 'Template ready: $filename';
+      } else {
+        // Native: Save to documents directory
+        final io.Directory dir = await path_provider.getApplicationDocumentsDirectory();
+        final io.File file = io.File('${dir.path}/$filename');
+        await file.writeAsString(csvString);
+        return file.path;
+      }
+    } catch (e) {
+      throw Exception('Failed to export template: $e');
     }
   }
 
