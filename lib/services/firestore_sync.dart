@@ -579,6 +579,9 @@ class FirestoreSyncService {
     final out = <Task>[];
     if (!_initialized || _auth?.currentUser == null) return out;
     final uid = _auth!.currentUser!.uid;
+    final userEmail = _auth!.currentUser!.email;
+    
+    // Fetch tasks from user's own collection (primary source)
     final snap = await _fs!.collection('users').doc(uid).collection('tasks').get();
     for (final doc in snap.docs) {
       try {
@@ -588,6 +591,37 @@ class FirestoreSyncService {
         out.add(t);
       } catch (_) {}
     }
+    
+    // Also fetch tasks from shared_tasks collection that are owned by current user
+    // This handles tasks created via web/API that may only exist in shared_tasks
+    if (userEmail != null) {
+      final sharedSnap = await _fs!.collection('shared_tasks')
+          .where('ownerId', isEqualTo: userEmail)
+          .get();
+      
+      print('[FirestoreSync] Found ${sharedSnap.docs.length} owned tasks in shared_tasks collection');
+      
+      final taskIds = {for (var t in out) t.id}; // Track existing task IDs
+      
+      for (final doc in sharedSnap.docs) {
+        try {
+          // Skip if already fetched from user's collection
+          if (taskIds.contains(doc.id)) {
+            print('[FirestoreSync] Skipping duplicate from shared_tasks: ${doc.id}');
+            continue;
+          }
+          
+          final Map<String, dynamic> data = Map<String, dynamic>.from(doc.data() as Map);
+          data['id'] = data['id'] ?? doc.id;
+          final t = Task.fromJson(data);
+          out.add(t);
+          print('[FirestoreSync] Added task from shared_tasks (owned by user): ${t.id}');
+        } catch (e) {
+          print('[FirestoreSync] Error parsing shared task: $e');
+        }
+      }
+    }
+    
     return out;
   }
 
