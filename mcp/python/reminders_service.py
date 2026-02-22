@@ -19,6 +19,43 @@ from utils import (
 )
 
 
+def _datetime_to_iso_string(dt_value) -> Optional[str]:
+    """
+    Convert a datetime object or DatetimeWithNanoseconds to ISO 8601 string format.
+    Matches the format expected by Dart: "YYYY-MM-DDTHH:MM:SS.fff" (3-digit milliseconds)
+    
+    Args:
+        dt_value: A datetime object or None
+        
+    Returns:
+        ISO 8601 format string or None
+    """
+    if dt_value is None:
+        return None
+    
+    try:
+        # Handle both datetime and DatetimeWithNanoseconds objects
+        iso_str = dt_value.isoformat()
+        
+        # Remove timezone info if present (everything after + or -)
+        if '+' in iso_str:
+            iso_str = iso_str.split('+')[0]
+        elif iso_str.count('-') > 2:  # More than 2 hyphens means there's a timezone
+            parts = iso_str.rsplit('-', 1)
+            if ':' in parts[1]:  # Timezone format check
+                iso_str = parts[0]
+        
+        # Convert microseconds to milliseconds (3 digits)
+        if '.' in iso_str:
+            date_part, micro_part = iso_str.split('.')
+            milliseconds = micro_part[:3]
+            iso_str = f"{date_part}.{milliseconds}"
+        
+        return iso_str
+    except Exception:
+        return str(dt_value)
+
+
 def _merge_and_deduplicate_reminders(own_reminders: List[Dict], shared_reminders: List[Dict]) -> List[Dict]:
     """
     Merge own and shared reminders, deduplicating by ID
@@ -670,37 +707,72 @@ async def create_reminder(
         db = get_firestore()
         now = datetime.now()
         
+        # Parse datetime strings to datetime objects
+        due_at_dt = datetime.fromisoformat(due_at.replace("Z", "+00:00")) if due_at else None
+        recurrence_end_date_dt = (
+            datetime.fromisoformat(recurrence_end_date.replace("Z", "+00:00"))
+            if recurrence_end_date
+            else None
+        )
+        
+        # Convert datetime objects to ISO 8601 format strings for Firestore
+        # This ensures proper format matching what Dart app expects
+        now_str = _datetime_to_iso_string(now)
+        due_at_str = _datetime_to_iso_string(due_at_dt)
+        recurrence_end_date_str = _datetime_to_iso_string(recurrence_end_date_dt)
+        
+        # Create reminder data to store in Firestore (with ISO 8601 strings)
         reminder_data = {
             "title": title.strip(),
             "notes": notes.strip() if notes else None,
-            "createdAt": now,
-            "updatedAt": now,
+            "createdAt": now_str,
+            "updatedAt": now_str,
             "ownerId": user_id,
             "isCompleted": False,
             "completedAt": None,
             "isDisabled": False,
             "disabledUntil": None,
             "remindBeforeMinutes": remind_before_minutes,
-            "dueAt": datetime.fromisoformat(due_at.replace("Z", "+00:00")) if due_at else None,
+            "dueAt": due_at_str,
             "recurrence": recurrence or None,
-            "recurrenceEndDate": (
-                datetime.fromisoformat(recurrence_end_date.replace("Z", "+00:00"))
-                if recurrence_end_date
-                else None
-            ),
+            "recurrenceEndDate": recurrence_end_date_str,
             "weeklyDays": weekly_days or None,
             "isShared": bool(shared_with and len(shared_with) > 0),
-            "sharedWith": shared_with or [],
+            "sharedWith": shared_with if shared_with else None,
             "lastModifiedBy": user_id,
             "deleted": False,
-            "version": 1,
+            "version": 0,  # Use version 0 to match Dart app convention (0 = created, 1+ = updated)
         }
         
-        doc_ref = db.collection("shared_tasks").add(reminder_data)
+        # Add document and get the reference
+        status, doc_ref = db.collection("shared_tasks").add(reminder_data)
+        doc_id = doc_ref.id
         
+        # Update the document to include the id field
+        doc_ref.update({"id": doc_id})
+        
+        # Return the reminder with the id field (for response, convert strings back to datetime objects)
         reminder = {
-            "id": doc_ref[1].id,
-            **reminder_data,
+            "id": doc_id,
+            "title": reminder_data["title"],
+            "notes": reminder_data["notes"],
+            "createdAt": now,  # Keep datetime object for return
+            "updatedAt": now,  # Keep datetime object for return
+            "ownerId": reminder_data["ownerId"],
+            "isCompleted": reminder_data["isCompleted"],
+            "completedAt": reminder_data["completedAt"],
+            "isDisabled": reminder_data["isDisabled"],
+            "disabledUntil": reminder_data["disabledUntil"],
+            "remindBeforeMinutes": reminder_data["remindBeforeMinutes"],
+            "dueAt": due_at_dt,  # Keep datetime object for return
+            "recurrence": reminder_data["recurrence"],
+            "recurrenceEndDate": recurrence_end_date_dt,  # Keep datetime object for return
+            "weeklyDays": reminder_data["weeklyDays"],
+            "isShared": reminder_data["isShared"],
+            "sharedWith": reminder_data["sharedWith"],
+            "lastModifiedBy": reminder_data["lastModifiedBy"],
+            "deleted": reminder_data["deleted"],
+            "version": reminder_data["version"],
         }
         
         if format_for_llm:

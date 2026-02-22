@@ -409,6 +409,19 @@ class FirestoreSyncService {
       );
       
       final userEmail = userCred.user?.email;
+      final uid = userCred.user?.uid;
+      
+      // Create user document in Firestore
+      if (uid != null && userEmail != null) {
+        await _fs!.collection('users').doc(uid).set({
+          'email': userEmail,
+          'createdAt': DateTime.now().toIso8601String(),
+          'updatedAt': DateTime.now().toIso8601String(),
+        }, firestore.SetOptions(merge: true));
+        
+        print('[FirestoreSync] Created Firestore user document for: $userEmail');
+      }
+      
       _userController.add(userEmail);
       _statusController.add('idle');
       
