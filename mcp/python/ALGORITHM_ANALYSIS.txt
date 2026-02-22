@@ -1,0 +1,41 @@
+# Algorithm for Matching Reminders to a Specific Date
+# (Based on Flutter app's tasks_for_date.dart)
+
+## Key Logic: _matchesOnDate(Task t, DateTime date)
+
+1. NORMALIZE both dueAt and target date to midnight (00:00:00)
+   - due = DateTime(t.dueAt.year, t.dueAt.month, t.dueAt.day)
+   - target = DateTime(date.year, date.month, date.day)
+
+2. CHECK if target is before due date (and not same day)
+   - if (!target.isAfter(due) && !isSameDay(due, target)) return false
+   - Translation: target MUST be on or after due date
+
+3. CHECK recurrence end date
+   - if (t.recurrenceEndDate != null)
+   -   if (target.isAfter(recurrenceEndDate)) return false
+
+4. APPLY recurrence logic
+   - if no recurrence: return isSameDay(due, target)
+   
+   - if daily: return !target.isBefore(due)
+     * Show on due date and every day after
+   
+   - if weekly:
+     * First check: if (target.isBefore(due)) return false
+     * If weeklyDays specified: return weeklyDays.contains(target.weekday)
+     * Otherwise: return (target.weekday == due.weekday)
+   
+   - if monthly:
+     * return (due.day == target.day && !target.isBefore(due))
+     * Show on same day of month, on or after due date
+
+## IsSameDay Implementation
+bool isSameDay(DateTime a, DateTime b) => 
+  a.year == b.year && a.month == b.month && a.day == b.day
+
+## Key Differences from Current MCP Implementation
+1. Normalizes dates to midnight before comparison
+2. Uses weekday matching for weekly (not "is it today")
+3. Monthly recurrence uses day-of-month (not day-of-month between dates)
+4. Multiple date comparisons more careful

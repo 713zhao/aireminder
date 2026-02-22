@@ -165,9 +165,18 @@ async def list_tools():
             },
             {
                 "name": "get_today_reminders",
-                "description": "Get all reminders due today",
+                "description": "Get all reminders due today (includes own + shared reminders)",
                 "parameters": {
                     "userId": "User ID or email (optional)",
+                    "includeCompleted": "Include completed reminders (default: false)",
+                }
+            },
+            {
+                "name": "get_reminders_for_date",
+                "description": "Get reminders for a specific date (includes own + shared reminders)",
+                "parameters": {
+                    "userId": "User ID or email (optional)",
+                    "date": "Date in ISO format (YYYY-MM-DD or ISO-8601 format) (required)",
                     "includeCompleted": "Include completed reminders (default: false)",
                 }
             },
@@ -338,6 +347,18 @@ async def call_tool(tool_call: ToolCall):
                 include_completed=arguments.get("includeCompleted", False),
             )
 
+        elif name == "get_reminders_for_date":
+            if "date" not in arguments:
+                raise HTTPException(
+                    status_code=400,
+                    detail="'date' parameter is required for get_reminders_for_date"
+                )
+            result = await service.get_reminders_for_date(
+                user_id,
+                arguments["date"],
+                include_completed=arguments.get("includeCompleted", False),
+            )
+
         elif name == "get_overdue_reminders":
             result = await service.get_overdue_reminders(user_id)
 
@@ -493,6 +514,27 @@ async def get_today_reminders(
     except Exception as error:
         if DEBUG:
             print(f"[DEBUG] Error getting today reminders: {error}", file=sys.stderr)
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+@app.get("/api/reminders/date/{date}")
+async def get_reminders_for_date(
+    date: str,
+    userId: Optional[str] = Query(None),
+    includeCompleted: bool = Query(False),
+):
+    """Get reminders for a specific date (YYYY-MM-DD or ISO-8601 format)"""
+    user_id = userId or DEFAULT_USER_ID
+    try:
+        reminders = await service.get_reminders_for_date(
+            user_id, 
+            date, 
+            include_completed=includeCompleted
+        )
+        return create_success_response(reminders)
+    except Exception as error:
+        if DEBUG:
+            print(f"[DEBUG] Error getting reminders for date: {error}", file=sys.stderr)
         raise HTTPException(status_code=500, detail=str(error))
 
 
