@@ -1,41 +1,85 @@
 # Algorithm for Matching Reminders to a Specific Date
 # (Based on Flutter app's tasks_for_date.dart)
+# 
+# UPDATED: Implemented in reminders_service.py as _matches_on_date()
+# Status: FULLY IMPLEMENTED AND TESTED
 
-## Key Logic: _matchesOnDate(Task t, DateTime date)
+## Key Logic: _matches_on_date(reminder: Dict, target_date: datetime)
 
 1. NORMALIZE both dueAt and target date to midnight (00:00:00)
-   - due = DateTime(t.dueAt.year, t.dueAt.month, t.dueAt.day)
-   - target = DateTime(date.year, date.month, date.day)
+   - due = _normalize_date_to_midnight(dueAt)
+   - target = datetime(date.year, date.month, date.day)
+   - Handles both timezone-aware and naive datetimes
 
 2. CHECK if target is before due date (and not same day)
-   - if (!target.isAfter(due) && !isSameDay(due, target)) return false
+   - if target_date < due and not _is_same_day(due, target_date): return False
    - Translation: target MUST be on or after due date
 
 3. CHECK recurrence end date
-   - if (t.recurrenceEndDate != null)
-   -   if (target.isAfter(recurrenceEndDate)) return false
+   - Checks both field names: recurrenceEnd (Firestore) and recurrenceEndDate (local)
+   - if target_date > end_date: return False
+   - Prevents showing expired recurring reminders
 
-4. APPLY recurrence logic
-   - if no recurrence: return isSameDay(due, target)
+4. APPLY recurrence logic based on recurrence field
    
-   - if daily: return !target.isBefore(due)
-     * Show on due date and every day after
+   NO RECURRENCE (None or empty):
+   - return _is_same_day(due, target_date)
+   - Show only on the exact due date
    
-   - if weekly:
-     * First check: if (target.isBefore(due)) return false
-     * If weeklyDays specified: return weeklyDays.contains(target.weekday)
-     * Otherwise: return (target.weekday == due.weekday)
+   DAILY recurrence:
+   - return target_date >= due
+   - Show on due date and every day after
    
-   - if monthly:
-     * return (due.day == target.day && !target.isBefore(due))
-     * Show on same day of month, on or after due date
+   WEEKLY recurrence:
+   - First check: if target_date < due: return False
+   - If weeklyDays specified (array of weekday numbers):
+     * target_weekday = target_date.isoweekday()  # Monday=1, Sunday=7
+     * return target_weekday in weeklyDays
+   - Otherwise: return target_date.isoweekday() == due.isoweekday()
+   - Show on matching weekdays only
+   
+   MONTHLY recurrence:
+   - return (due.day == target_date.day and target_date >= due)
+   - Show on same day of month, on or after due date
+   
+   YEARLY recurrence:
+   - return (due.month == target_date.month and due.day == target_date.day and target_date >= due)
+   - Show on same month/day, on or after due date
 
-## IsSameDay Implementation
-bool isSameDay(DateTime a, DateTime b) => 
-  a.year == b.year && a.month == b.month && a.day == b.day
+## Helper Functions
 
-## Key Differences from Current MCP Implementation
-1. Normalizes dates to midnight before comparison
-2. Uses weekday matching for weekly (not "is it today")
-3. Monthly recurrence uses day-of-month (not day-of-month between dates)
-4. Multiple date comparisons more careful
+_normalize_date_to_midnight(dt: str|datetime) -> datetime:
+  - Parses ISO format strings or datetime objects
+  - Returns datetime normalized to 00:00:00 UTC
+  - Handles timezone-aware and naive datetimes
+
+_is_same_day(a: datetime, b: datetime) -> bool:
+  - return a.year == b.year and a.month == b.month and a.day == b.day
+
+## Implementation Notes
+
+1. Field name compatibility:
+   - Firestore uses "recurrenceEnd" for recurrence end date
+   - Local backups use "recurrenceEndDate"
+   - Code checks both: reminder.get("recurrenceEnd") or reminder.get("recurrenceEndDate")
+
+2. Completion status handling:
+   - Treats None and False as "not completed" (pending)
+   - Only True is considered "completed"
+
+3. Weekday calculation:
+   - Uses Python's isoweekday() (Monday=1, Sunday=7)
+   - Matches Flutter's weekday numbering for compatibility
+
+4. Error handling:
+   - Returns False on any exception to safely exclude malformed reminders
+
+## Testing Results
+
+Tested on 2026-02-22 (Sunday) with actual data:
+✓ Weekly Sunday reminders show correctly (weeklyDays=[7])
+✓ Daily reminders show correctly (no weekday filter)
+✓ Monthly reminders show on correct day
+✓ Reminders with past end dates are excluded
+✓ Reminders before due date are excluded
+✓ Owned + shared reminders are merged correctly
