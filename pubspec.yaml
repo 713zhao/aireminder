@@ -3,7 +3,7 @@ description: AI-powered reminder and todo app with smart scheduling.
 publish_to: 'none'
 version: 1.3.0+12
 environment:
-  sdk: '>=2.18.0 <4.0.0'
+  sdk: '>=3.0.0 <4.0.0'
 
 dependencies:
   flutter:
@@ -31,6 +31,8 @@ dependencies:
   path_provider: ^2.1.1
   mime: ^1.0.4
   image: ^4.1.3
+  file_picker: ^8.0.0 # For import/export file selection
+  share_plus: ^10.0.0 # For sharing exported backup files
 
 dev_dependencies:
   flutter_test:

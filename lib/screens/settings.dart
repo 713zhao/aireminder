@@ -5,6 +5,7 @@ import '../services/audio_priming.dart';
 import '../services/firestore_sync.dart';
 import 'family_sharing_screen.dart';
 import '../data/hive_task_repository.dart';
+import '../widgets/import_export_widget.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -582,6 +583,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               color: Colors.grey[600],
               fontSize: 12,
             ),
+          ),
+          const SizedBox(height: 20),
+          // ===================== IMPORT/EXPORT SECTION =====================
+          ImportExportWidget(
+            repository: HiveTaskRepository(),
+            onTasksImported: () {
+              setState(() {});
+            },
           ),
           const SizedBox(height: 20),
           // ===================== ACCOUNT SECTION =====================
