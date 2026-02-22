@@ -480,8 +480,33 @@ async def debug_collections():
 
 
 @app.get("/api/debug/collection/{collection_name}")
+async def debug_get_collection(collection_name: str):
+    """Debug endpoint - get documents from a collection"""
+    try:
+        db = get_firestore()
+        docs = db.collection(collection_name).stream()
+        items = []
+        for doc in docs:
+            items.append({
+                "id": doc.id,
+                **doc.to_dict()
+            })
+        return {
+            "collection": collection_name,
+            "count": len(items),
+            "items": items
+        }
+    except Exception as error:
+        if DEBUG:
+            print(f"[DEBUG] Error getting collection: {error}", file=sys.stderr)
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+# ============================================================================
 # REST API Endpoints for Reminders
 # ============================================================================
+
+@app.get("/api/reminders/upcoming")
 async def get_upcoming_reminders(
     userId: Optional[str] = Query(None),
     days: int = Query(7),
