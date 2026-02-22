@@ -96,7 +96,12 @@ class FirestoreSyncService {
             final uid = _auth!.currentUser!.uid;
             print('[FirestoreSync] Pushing delete for task: $taskId');
             try {
+              // Delete from owner's collection
               await _fs!.collection('users').doc(uid).collection('tasks').doc(taskId).delete();
+            } catch (_) {}
+            try {
+              // Also delete from shared_tasks collection
+              await _fs!.collection('shared_tasks').doc(taskId).delete();
             } catch (_) {}
           } else {
             final val = event.value as String?;
@@ -672,12 +677,13 @@ class FirestoreSyncService {
     final col = _fs!.collection('users').doc(uid).collection('tasks');
     await col.doc(t.id).set(taskData, firestore.SetOptions(merge: true));
     
-    // If task is shared, also save to shared tasks collection for each shared user
+    // ALWAYS save to shared tasks collection (for both shared and non-shared tasks)
+    // This allows the MCP server to query all user tasks from a single collection
+    final sharedTasksCol = _fs!.collection('shared_tasks');
+    await sharedTasksCol.doc(t.id).set(taskData, firestore.SetOptions(merge: true));
+    
+    // If task is shared, also update sharing index for each shared user
     if (t.isShared && t.sharedWith != null && t.sharedWith!.isNotEmpty) {
-      final sharedTasksCol = _fs!.collection('shared_tasks');
-      await sharedTasksCol.doc(t.id).set(taskData, firestore.SetOptions(merge: true));
-      
-      // Update sharing index for each shared user
       for (final sharedEmail in t.sharedWith!) {
         final sharingIndexCol = _fs!.collection('sharing_index').doc(sharedEmail).collection('shared_tasks');
         await sharingIndexCol.doc(t.id).set({
