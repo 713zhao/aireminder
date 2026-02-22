@@ -1,0 +1,20 @@
+# FastAPI and async
+fastapi==0.109.0
+uvicorn==0.27.0
+pydantic==2.5.0
+python-dotenv==1.0.0
+
+# Firebase Admin SDK
+firebase-admin==6.2.0
+
+# MCP SDK for Python
+mcp==1.0.0
+
+# Utilities
+python-dateutil==2.8.2
+pytz==2024.1
+
+# Optional: for development
+pytest==7.4.3
+pytest-asyncio==0.23.2
+httpx==0.25.2
