@@ -188,12 +188,15 @@ class _TaskFormState extends State<TaskForm> {
       final repo = HiveTaskRepository();
       Task? newOrUpdated;
       
+      // Default due date to today if not set
+      final effectiveDueAt = _dueAt ?? DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day, 9, 0);
+      
       if (widget.taskId == null) {
         // Creating new task
         newOrUpdated = await repo.create(
           title: _titleCtrl.text.trim(),
           notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
-          dueAt: _dueAt,
+          dueAt: effectiveDueAt,
           recurrence: _recurrence == 'none' ? null : _recurrence,
           remindBeforeMinutes: _remindBeforeMinutes,
           recurrenceEndDate: _recurrenceEndDate,
@@ -216,7 +219,7 @@ class _TaskFormState extends State<TaskForm> {
           title: _titleCtrl.text.trim(),
           notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
           createdAt: existing.createdAt,
-          dueAt: _dueAt,
+          dueAt: effectiveDueAt,
           recurrence: _recurrence == 'none' ? null : _recurrence,
           isCompleted: existing.isCompleted,
           completedAt: existing.completedAt,
