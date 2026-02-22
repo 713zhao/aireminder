@@ -26,5 +26,10 @@ windows/build/
 *.log
 
 # Env / secrets (if you have them)
-*.env
-*.env.*
+# Ignore actual .env files with secrets
+.env
+.env.local
+.env.*.local
+
+# But allow .env.example files (templates without secrets)
+!.env.example
