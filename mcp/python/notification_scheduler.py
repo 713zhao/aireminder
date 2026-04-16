@@ -17,6 +17,7 @@ import os
 import sys
 import json
 import asyncio
+from dateutil import parser as date_parser
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Set
 from dotenv import load_dotenv
@@ -55,6 +56,18 @@ ENABLE_WHATSAPP = os.getenv("ENABLE_WHATSAPP", "true").lower() == "true"
 # Track which reminders have been sent pre-event notifications
 _notified_reminders: Set[str] = set()
 _notified_reminders_file = "notified_reminders.json"
+
+
+
+def extract_time(due_datetime_str: str) -> str:
+    """Extract time from dueDateTime string"""
+    if not due_datetime_str:
+        return "No time"
+    try:
+        parsed = date_parser.parse(due_datetime_str)
+        return parsed.strftime("%I:%M %p")
+    except:
+        return "No time"
 
 
 class NotificationScheduler:
@@ -104,7 +117,7 @@ class NotificationScheduler:
             CronTrigger(
                 hour=MORNING_SUMMARY_HOUR,
                 minute=MORNING_SUMMARY_MINUTE,
-                timezone="local"
+                timezone="Asia/Singapore"
             ),
             id="morning_summary",
             name="Daily 7 AM Summary",
@@ -157,8 +170,12 @@ class NotificationScheduler:
                 message = "📅 **Good Morning! Today's Reminders:**\n\n"
                 for i, reminder in enumerate(reminders, 1):
                     title = reminder.get("title", "Untitled")
-                    due_at = reminder.get("dueAt", "No time")
-                    message += f"{i}. **{title}**\n   ⏰ {due_at}\n"
+                    recurrence = reminder.get("recurrence", "once")
+                    # Format recurrence with emoji
+                    recurrence_icon = "🔄" if recurrence != "once" else "📌"
+                    due_datetime = reminder.get("dueDateTime", "")
+                    time_str = extract_time(due_datetime)
+                    message += f"{i}. **{title}**\n   ⏰ {time_str} ({recurrence_icon} {recurrence})\n"
 
             # Send via all enabled channels
             if self.telegram_notifier:
@@ -189,13 +206,13 @@ class NotificationScheduler:
                     continue
 
                 # Parse due time
-                due_at_str = reminder.get("dueAt")
+                due_at_str = reminder.get("dueDateTime")
                 if not due_at_str:
                     continue
 
                 try:
-                    due_at = datetime.fromisoformat(due_at_str.replace("Z", "+00:00"))
-                except (ValueError, AttributeError):
+                    due_at = parser.parse(due_at_str)
+                except (ValueError, AttributeError, TypeError):
                     continue
 
                 # Check if reminder is within the pre-event window
@@ -211,12 +228,12 @@ class NotificationScheduler:
         """Send pre-event reminder notification"""
         try:
             title = reminder.get("title", "Untitled")
-            due_at = reminder.get("dueAt", "")
+            due_at = reminder.get("dueDateTime", "")
             notes = reminder.get("notes", "")
 
             # Calculate time until reminder
             try:
-                due_dt = datetime.fromisoformat(due_at.replace("Z", "+00:00"))
+                due_dt = parser.parse(due_at)
                 time_until = due_dt - datetime.now()
                 minutes = int(time_until.total_seconds() / 60)
             except:
@@ -286,7 +303,7 @@ async def main():
         # Add job to reset notifications at midnight
         scheduler.scheduler.add_job(
             scheduler.reset_daily_notifications,
-            CronTrigger(hour=0, minute=0, timezone="local"),
+            CronTrigger(hour=0, minute=0, timezone="Asia/Singapore"),
             id="daily_reset",
             name="Daily Reset",
             replace_existing=True,

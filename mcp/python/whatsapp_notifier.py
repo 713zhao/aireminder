@@ -1,224 +1,83 @@
 #!/usr/bin/env python3
 """
-WhatsApp Notification Integration
-Sends reminders via WhatsApp (using Twilio or WhatsApp Business API)
-
-Supports two methods:
-1. Twilio (easier setup, recommended)
-2. WhatsApp Business API (more advanced)
+WhatsApp notifier using Twilio API
 """
 
 import os
-import logging
+import asyncio
 from typing import Optional
 from dotenv import load_dotenv
 
-load_dotenv()
+# Try to import Twilio
+try:
+    from twilio.rest import Client
+    TWILIO_AVAILABLE = True
+except ImportError:
+    TWILIO_AVAILABLE = False
 
-logger = logging.getLogger(__name__)
+load_dotenv()
 
 
 class WhatsAppNotifier:
-    """Handles WhatsApp notifications"""
-
+    """Send WhatsApp messages via Twilio"""
+    
     def __init__(self):
-        self.method = os.getenv("WHATSAPP_METHOD", "twilio").lower()
-        self.enabled = os.getenv("ENABLE_WHATSAPP", "true").lower() == "true"
-
-        if self.method == "twilio":
-            self._init_twilio()
-        elif self.method == "business":
-            self._init_business_api()
-        else:
-            raise ValueError(f"Unknown WhatsApp method: {self.method}")
-
+        self.account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+        self.auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+        self.from_number = os.getenv("TWILIO_WHATSAPP_FROM")
+        # Support both variable names for flexibility
+        self.to_number = os.getenv("WHATSAPP_TO_NUMBER") or os.getenv("WHATSAPP_RECIPIENT_PHONE")
+        # Ensure phone number has whatsapp: prefix
+        if self.to_number and not self.to_number.startswith("whatsapp:"):
+            self.to_number = f"whatsapp:{self.to_number}"
         self.client = None
-
-    def _init_twilio(self):
-        """Initialize Twilio WhatsApp integration"""
-        try:
-            from twilio.rest import Client
-
-            self.account_sid = os.getenv("TWILIO_ACCOUNT_SID")
-            self.auth_token = os.getenv("TWILIO_AUTH_TOKEN")
-            self.from_number = os.getenv("TWILIO_WHATSAPP_FROM")
-            self.to_number = os.getenv("WHATSAPP_RECIPIENT_PHONE")
-
-            if not all([self.account_sid, self.auth_token, self.from_number, self.to_number]):
-                raise ValueError("Missing Twilio WhatsApp credentials in .env")
-
-            self.client_class = Client
-            self.method_name = "twilio"
-            logger.info("✓ Twilio WhatsApp notifier configured")
-
-        except ImportError:
-            logger.error("twilio package not installed. Install with: pip install twilio")
-            raise
-
-    def _init_business_api(self):
-        """Initialize WhatsApp Business API integration"""
-        try:
-            import requests
-
-            self.api_url = os.getenv("WHATSAPP_BUSINESS_API_URL")
-            self.business_phone_id = os.getenv("WHATSAPP_BUSINESS_PHONE_ID")
-            self.business_access_token = os.getenv("WHATSAPP_BUSINESS_ACCESS_TOKEN")
-            self.recipient_phone = os.getenv("WHATSAPP_RECIPIENT_PHONE")
-
-            if not all([
-                self.api_url,
-                self.business_phone_id,
-                self.business_access_token,
-                self.recipient_phone,
-            ]):
-                raise ValueError("Missing WhatsApp Business API credentials in .env")
-
-            self.requests = requests
-            self.method_name = "business"
-            logger.info("✓ WhatsApp Business API notifier configured")
-
-        except ImportError:
-            logger.error("requests package not installed. Install with: pip install requests")
-            raise
-
-    async def initialize(self):
-        """Initialize WhatsApp connection"""
-        try:
-            if self.method == "twilio":
-                self.client = self.client_class(self.account_sid, self.auth_token)
-                logger.info("✓ Twilio WhatsApp connection initialized")
-            elif self.method == "business":
-                logger.info("✓ WhatsApp Business API connection ready")
-
-        except Exception as e:
-            logger.error(f"WhatsApp initialization failed: {e}")
-            raise
-
-    async def send_message(self, message: str) -> bool:
-        """
-        Send a message via WhatsApp
-
-        Args:
-            message: Message text
-
-        Returns:
-            True if successful, False otherwise
-        """
-        if not self.enabled:
-            logger.warning("WhatsApp notifications disabled")
+        self.is_initialized = False
+        
+    async def initialize(self) -> bool:
+        """Initialize WhatsApp notifier"""
+        if not TWILIO_AVAILABLE:
+            print("ERROR: Twilio not installed. Run: pip install twilio")
             return False
-
-        try:
-            if self.method == "twilio":
-                return await self._send_twilio(message)
-            elif self.method == "business":
-                return await self._send_business_api(message)
-        except Exception as e:
-            logger.error(f"Error sending WhatsApp message: {e}")
+        
+        if not self.account_sid or not self.auth_token:
+            print("ERROR: TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN not set in .env")
             return False
-
-    async def _send_twilio(self, message: str) -> bool:
-        """Send via Twilio"""
+        
+        if not self.from_number or not self.to_number:
+            print("ERROR: TWILIO_WHATSAPP_FROM and WHATSAPP_TO_NUMBER not set in .env")
+            return False
+        
         try:
-            msg = self.client.messages.create(
-                from_=self.from_number,
-                body=message,
-                to=self.to_number,
-            )
-            logger.info(f"✓ WhatsApp message sent via Twilio (SID: {msg.sid})")
+            self.client = Client(self.account_sid, self.auth_token)
+            self.is_initialized = True
             return True
         except Exception as e:
-            logger.error(f"Twilio error: {e}")
+            print(f"ERROR: Failed to initialize Twilio client: {e}")
             return False
-
-    async def _send_business_api(self, message: str) -> bool:
-        """Send via WhatsApp Business API"""
+    
+    async def send_message(self, message: str, media_url: Optional[str] = None) -> bool:
+        """Send a WhatsApp message"""
+        if not self.is_initialized or not self.client:
+            print("ERROR: WhatsApp notifier not initialized")
+            return False
+        
         try:
-            url = (
-                f"{self.api_url}/{self.business_phone_id}/messages"
-            )
-
-            headers = {
-                "Authorization": f"Bearer {self.business_access_token}",
-                "Content-Type": "application/json",
-            }
-
-            payload = {
-                "messaging_product": "whatsapp",
-                "recipient_type": "individual",
-                "to": self.recipient_phone,
-                "type": "text",
-                "text": {"body": message},
-            }
-
-            response = self.requests.post(url, json=payload, headers=headers)
-
-            if response.status_code == 200:
-                logger.info("✓ WhatsApp message sent via Business API")
-                return True
-            else:
-                logger.error(
-                    f"WhatsApp Business API error: "
-                    f"{response.status_code} - {response.text}"
+            if media_url:
+                msg = self.client.messages.create(
+                    from_=self.from_number,
+                    to=self.to_number,
+                    body=message,
+                    media_url=media_url
                 )
-                return False
-
-        except Exception as e:
-            logger.error(f"WhatsApp Business API error: {e}")
-            return False
-
-    async def send_template_message(
-        self, template_name: str, parameters: list = None
-    ) -> bool:
-        """
-        Send a template message (WhatsApp Business API only)
-
-        Args:
-            template_name: Name of the pre-approved template
-            parameters: List of parameter values
-
-        Returns:
-            True if successful, False otherwise
-        """
-        if self.method != "business":
-            logger.warning("Template messages only supported with Business API")
-            return False
-
-        try:
-            url = (
-                f"{self.api_url}/{self.business_phone_id}/messages"
-            )
-
-            headers = {
-                "Authorization": f"Bearer {self.business_access_token}",
-                "Content-Type": "application/json",
-            }
-
-            payload = {
-                "messaging_product": "whatsapp",
-                "to": self.recipient_phone,
-                "type": "template",
-                "template": {
-                    "name": template_name,
-                    "language": {"code": "en_US"},
-                },
-            }
-
-            if parameters:
-                payload["template"]["parameters"] = {"body": {"parameters": parameters}}
-
-            response = self.requests.post(url, json=payload, headers=headers)
-
-            if response.status_code == 200:
-                logger.info(f"✓ WhatsApp template message sent: {template_name}")
-                return True
             else:
-                logger.error(
-                    f"WhatsApp template error: "
-                    f"{response.status_code} - {response.text}"
+                msg = self.client.messages.create(
+                    from_=self.from_number,
+                    to=self.to_number,
+                    body=message
                 )
-                return False
-
+            
+            print(f"Message sent with SID: {msg.sid}")
+            return True
         except Exception as e:
-            logger.error(f"Error sending template message: {e}")
+            print(f"ERROR: Failed to send WhatsApp message: {e}")
             return False
